@@ -1,0 +1,29 @@
+# Restricted / derived data
+data/raw/*
+data/source/*
+data/derived/*
+!data/README.md
+
+# Generated results
+results/*
+!results/.gitkeep
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local environment
+.env
+*.log
