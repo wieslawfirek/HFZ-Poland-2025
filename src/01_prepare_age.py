@@ -34,7 +34,6 @@ OUTPUT_PARQUET_STEM = OUT_DIR / "uczniowie2025_wiek_fitnessgram"
 SUMMARY_CSV = REPORT_DIR / "wiek_fitnessgram_baza_podsumowanie.csv"
 AGE_COUNTS_CSV = REPORT_DIR / "wiek_fitnessgram_liczebnosci_wiek_plec.csv"
 STATUS_COUNTS_CSV = REPORT_DIR / "wiek_fitnessgram_statusy_przypisania.csv"
-CONFLICTS_CSV = REPORT_DIR / "wiek_fitnessgram_konflikty_data_ur.csv"
 CONTROL_TXT = REPORT_DIR / "wiek_fitnessgram_baza_kontrola.txt"
 
 MIN_EXPECTED_N = 100_000
@@ -561,27 +560,11 @@ def main() -> None:
     # Konflikty dat urodzenia
     # -------------------------------------------------------------------------
 
-    conflicts = con.execute(
-        f"""
-        WITH resolved_birth AS (
-            {resolved_birth_sql}
-        )
-        SELECT
-            student_id_join AS student_id,
-            n_raw_records,
-            n_distinct_valid_birth_dates,
-            valid_birth_dates
-        FROM resolved_birth
-        WHERE birth_date_status = 'conflicting_birth_dates'
-        ORDER BY student_id
-        """
-    ).df()
-
-    conflicts.to_csv(
-        CONFLICTS_CSV,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    # Ze względów ochrony danych repozytorium publikacyjne nie eksportuje
+    # listy student_id z konfliktowymi datami urodzenia. Liczba takich
+    # przypadków pozostaje dostępna w tabelach podsumowujących i raporcie
+    # kontroli. Szczegółowe rekordy pozostają wyłącznie w chronionej bazie
+    # lokalnej w data/derived, która jest wyłączona z kontroli wersji.
 
     # -------------------------------------------------------------------------
     # Kontrola integralności
@@ -648,7 +631,6 @@ def main() -> None:
         str(SUMMARY_CSV),
         str(STATUS_COUNTS_CSV),
         str(AGE_COUNTS_CSV),
-        str(CONFLICTS_CSV),
     ]
 
     CONTROL_TXT.write_text(

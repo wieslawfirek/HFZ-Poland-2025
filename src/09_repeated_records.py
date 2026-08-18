@@ -15,7 +15,6 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 F_SUMMARY = OUT_DIR / "wielokrotne_rekordy_20mSRT_2025_podsumowanie.csv"
 F_DISTRIBUTION = OUT_DIR / "wielokrotne_rekordy_20mSRT_2025_rozklad.csv"
-F_DETAILS = OUT_DIR / "wielokrotne_rekordy_20mSRT_2025_uczniowie_wielokrotni.csv"
 F_CONTROL = OUT_DIR / "wielokrotne_rekordy_20mSRT_2025_kontrola.txt"
 
 def find_raw():
@@ -101,11 +100,8 @@ def main():
         ["Tylko rekordy z liczbowym wynikiem", n_valid_rows, n_valid_students, n_multi_valid, p_multi_valid, int(valid["n_valid_beep_records"].max())],
     ], columns=["wariant","n_rekordow","n_uczniow_z_min_1_rekordem","n_uczniow_z_>1_rekordem","pct_uczniow_z_>1_rekordem","max_rekordow_na_ucznia"])
 
-    details = counts[counts["n_beep_records"] > 1].sort_values(["n_beep_records","student_id"], ascending=[False,True])
-
     summary.to_csv(F_SUMMARY, index=False, encoding="utf-8-sig")
     distribution.to_csv(F_DISTRIBUTION, index=False, encoding="utf-8-sig")
-    details.to_csv(F_DETAILS, index=False, encoding="utf-8-sig")
 
     sentence = (
         f"Więcej niż jeden rekord 20mSRT stwierdzono u {n_multi:,} z {n_students:,} "
@@ -140,6 +136,10 @@ def main():
         "",
         "INTERPRETACJA:",
         interp,
+        "",
+        "OCHRONA DANYCH:",
+        "Repozytorium publikacyjne nie eksportuje listy student_id uczniów z wielokrotnymi rekordami.",
+        "Raport zawiera wyłącznie zagregowane liczebności i rozkłady.",
     ])
     F_CONTROL.write_text(report, encoding="utf-8")
 

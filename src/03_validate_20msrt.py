@@ -11,11 +11,8 @@ import matplotlib.pyplot as plt
 
 ROOT = Path.cwd()
 
-DB_CANDIDATES = [
-    ROOT / "data" / "derived" / "sportowe_talenty_2025_wiek_fitnessgram.duckdb",
-    ROOT / "data" / "derived" / "sportowe_talenty_2025_wiek_fitnessgram_v2.duckdb",
-    ROOT / "data" / "derived" / "sportowe_talenty_2025_wiek_fitnessgram_v3.duckdb",
-]
+DB_DIR = ROOT / "data" / "derived"
+DB_PATTERN = "sportowe_talenty_2025_wiek_fitnessgram*.duckdb"
 TABLE = "uczniowie2025_wiek_fitnessgram"
 
 OUT = ROOT / "results" / "03_validate_20msrt"
@@ -37,13 +34,17 @@ def qident(name: str) -> str:
 
 
 def find_db() -> Path:
-    existing = [p for p in DB_CANDIDATES if p.exists()]
+    existing = [p for p in DB_DIR.glob(DB_PATTERN) if p.is_file()]
     if not existing:
         raise FileNotFoundError(
             "Nie znaleziono bazy z nowym wiekiem FitnessGram.\n"
             "Najpierw uruchom:\n"
             "python .\\src\\01_prepare_age.py"
         )
+
+    # 01_prepare_age.py nigdy nie nadpisuje wcześniejszych baz i tworzy
+    # kolejne wersje (_v2, _v3, ...). Do walidacji wybieramy najnowszy
+    # faktycznie utworzony plik, niezależnie od numeru wersji.
     return max(existing, key=lambda p: p.stat().st_mtime)
 
 
