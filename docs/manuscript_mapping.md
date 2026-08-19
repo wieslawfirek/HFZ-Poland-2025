@@ -2,6 +2,7 @@
 
 | Manuscript element | Script / output |
 |---|---|
+| Raw export → one-row-per-student analytic base; latest repeated 20mSRT rule | `00_build_database.py` |
 | Participant flow and corrected age | `01_prepare_age.py`, `02_classify_hfz.py` |
 | 20mSRT descriptive validation / heaping | `03_validate_20msrt.py` |
 | Missing 20mSRT by age, sex, region | `04_missingness.py` |

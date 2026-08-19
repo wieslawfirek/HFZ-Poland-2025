@@ -1,12 +1,19 @@
 # Local data directories
 
-The contents of `data/raw/`, `data/source/`, and `data/derived/` are excluded from Git.
+Individual-level registry data are not distributed with this repository.
 
-Expected restricted inputs:
+## Required restricted input
 
-- `raw/SportoweTalenty2025.csv` — raw long-format 2025 registry export.
-- `source/sportowe_talenty.duckdb` — student-level source database containing table `uczniowie2025_hfz`.
+Place the authorized raw registry export at:
 
-Derived DuckDB/Parquet files are created in `derived/` by the analysis scripts.
+- `raw/SportoweTalenty2025.csv` — raw long-format 2025 **Sportowe Talenty** export.
 
-**Do not commit individual-level registry data to a public repository.**
+No pre-built DuckDB database is required. `src/00_build_database.py` reconstructs the one-row-per-student analytic base locally and writes it to `derived/`.
+
+## Local derived files
+
+The pipeline creates DuckDB/Parquet files in `derived/`. These files may contain individual-level information and must remain local.
+
+The contents of `data/raw/`, `data/source/` (retained as a defensively ignored legacy location), and `data/derived/` are excluded from Git.
+
+**Do not commit individual-level registry data or derived individual-level databases to a public repository.**

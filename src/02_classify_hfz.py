@@ -17,7 +17,7 @@ BAZA = ROOT / "data" / "derived"
 CUTOFFS_CSV = ROOT / "config" / "hfz_cutpoints.csv"
 
 # Baza utworzona wcześniej przez:
-#   utworz_baze_wiek_FitnessGram_2025.py
+#   src/01_prepare_age.py
 INPUT_GLOB = "sportowe_talenty_2025_wiek_fitnessgram*.duckdb"
 INPUT_TABLE = "uczniowie2025_wiek_fitnessgram"
 
@@ -34,7 +34,6 @@ FILE_AGE = OUT_DIR / "HFZ_2025_wg_wieku.csv"
 FILE_AGE_SEX = OUT_DIR / "HFZ_2025_wiek_plec.csv"
 FILE_DIFFS = OUT_DIR / "HFZ_2025_roznice_sasiednie_wieki.csv"
 FILE_1415 = OUT_DIR / "HFZ_2025_14_15_lat.csv"
-FILE_DUP = OUT_DIR / "HFZ_2025_duplikaty_student_id.csv"
 FILE_OLD_NEW = OUT_DIR / "HFZ_2025_porownanie_stary_nowy_status.csv"
 FILE_CONTROL = OUT_DIR / "HFZ_2025_kontrola.txt"
 
@@ -88,7 +87,7 @@ def newest_input_db() -> Path:
         raise FileNotFoundError(
             "Nie znaleziono bazy z nowym wiekiem.\n"
             f"Szukano w: {BAZA}\\{INPUT_GLOB}\n"
-            "Najpierw uruchom skrypt tworzący bazę wieku FitnessGram."
+            "Najpierw uruchom: python .\\src\\01_prepare_age.py"
         )
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
@@ -166,19 +165,14 @@ def main():
         ).fetchone()[0]
     )
 
-    # Duplikaty student_id w źródle — audyt zasady 1 uczeń = 1 rekord.
-    dup = src.execute(
-        f"""
-        SELECT
-            {qident(col_student)} AS student_id,
-            COUNT(*) AS n_rekordow
-        FROM {qident(INPUT_TABLE)}
-        GROUP BY 1
-        HAVING COUNT(*) > 1
-        ORDER BY n_rekordow DESC, student_id
-        """
-    ).df()
-    dup.to_csv(FILE_DUP, index=False, encoding="utf-8-sig")
+    # Zasada 1 uczeń = 1 rekord. Repozytorium publikacyjne nie eksportuje
+    # list student_id; ewentualna niezgodność zatrzymuje analizę.
+    if n_source != n_students:
+        src.close()
+        raise RuntimeError(
+            f"Tabela wejściowa narusza zasadę 1 uczeń = 1 rekord: "
+            f"N={n_source:,}, unikalne student_id={n_students:,}."
+        )
 
     src.close()
 

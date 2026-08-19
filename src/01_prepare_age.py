@@ -13,8 +13,8 @@ import pandas as pd
 
 ROOT = Path.cwd()
 
-SOURCE_DB = ROOT / "data" / "source" / "sportowe_talenty.duckdb"
-SOURCE_TABLE = "uczniowie2025_hfz"
+SOURCE_DB = ROOT / "data" / "derived" / "sportowe_talenty_2025_base.duckdb"
+SOURCE_TABLE = "uczniowie2025_base"
 
 REFERENCE_DATE = "2025-04-30"
 
@@ -137,7 +137,10 @@ def main() -> None:
     print("=" * 100)
 
     if not SOURCE_DB.exists():
-        raise FileNotFoundError(f"Nie znaleziono bazy źródłowej: {SOURCE_DB}")
+        raise FileNotFoundError(
+            f"Nie znaleziono bazy wejściowej: {SOURCE_DB}\n"
+            "Najpierw uruchom: python .\\src\\00_build_database.py"
+        )
 
     raw_path = find_raw_2025()
 
