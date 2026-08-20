@@ -25,7 +25,7 @@ def newest_db():
     files = list(BAZA.glob(DB_GLOB))
     if not files:
         raise FileNotFoundError(
-            f"Nie znaleziono bazy w {BAZA} pasującej do {DB_GLOB}"
+            f"No database found in {BAZA} matching {DB_GLOB}"
         )
     return max(files, key=lambda p: p.stat().st_mtime)
 
@@ -37,7 +37,7 @@ def choose(cols, candidates):
     for c in candidates:
         if c.lower() in lookup:
             return lookup[c.lower()]
-    raise KeyError(f"Brak kolumny. Szukano: {candidates}. Dostępne: {cols}")
+    raise KeyError(f"Column not found. Searched for: {candidates}. Available: {cols}")
 
 def main():
     db = newest_db()
@@ -45,15 +45,15 @@ def main():
 
     objs = con.execute("SHOW TABLES").df()["name"].astype(str).tolist()
     if TABLE not in objs:
-        # SHOW TABLES może nie zwrócić widoku w każdej wersji; spróbuj DESCRIBE bezpośrednio
+        # SHOW TABLES may not return a view in every version; try DESCRIBE directly
         try:
             con.execute(f"DESCRIBE {q(TABLE)}").df()
         except Exception:
-            raise RuntimeError(f"Nie znaleziono {TABLE}. Dostępne: {objs}")
+            raise RuntimeError(f"Not found {TABLE}. Available: {objs}")
 
     cols = con.execute(f"DESCRIBE {q(TABLE)}").df()["column_name"].astype(str).tolist()
     age_col = choose(cols, ["wiek_fitnessgram"])
-    sex_col = choose(cols, ["plec", "płeć", "sex"])
+    sex_col = choose(cols, ["plec", "sex", "sex"])
     beep_col = choose(cols, ["beep", "pacer", "20msrt"])
 
     rows = []
@@ -62,7 +62,7 @@ def main():
         t14 = THRESHOLDS[sex][14]
         t15 = THRESHOLDS[sex][15]
 
-        # Pobieramy tylko 14- i 15-latków tej płci
+        # Select only 14- and 15-year-olds of this sex
         stats = con.execute(
             f"""
             SELECT
@@ -91,7 +91,7 @@ def main():
         ).df()
 
         if set(stats["age"]) != {14, 15}:
-            raise RuntimeError(f"Brak danych 14/15 lat dla płci {sex}")
+            raise RuntimeError(f"Missing age-14/15 data for sex {sex}")
 
         r14 = stats.loc[stats["age"] == 14].iloc[0]
         r15 = stats.loc[stats["age"] == 15].iloc[0]
@@ -102,16 +102,16 @@ def main():
         p15_obs = float(r15["p_at_t15"])
 
         # Kontrfaktyczne:
-        # 15-latkowie oceniani tym samym progiem, który obowiązuje 14-latków.
+        # Age-15 students are evaluated using the same threshold as age-14 students.
         p15_if_t14 = float(r15["p_at_t14"])
 
-        # Dekompozycja przy progu 14 jako punkcie odniesienia:
+        # Decomposition using the age-14 threshold as the reference:
         # observed drop = performance/distribution component + threshold component
         performance_component = p15_if_t14 - p14_obs
         threshold_component = p15_obs - p15_if_t14
         observed_change = p15_obs - p14_obs
 
-        # Kontrola sumy.
+        # Sum check.
         residual = observed_change - (performance_component + threshold_component)
 
         total_abs = abs(observed_change)
@@ -154,17 +154,17 @@ def main():
     out.to_csv(OUT_CSV, index=False, encoding="utf-8-sig")
 
     lines = [
-        "DEKOMPOZYCJA SPADKU HFZ MIĘDZY 14. A 15. ROKIEM ŻYCIA",
+        "DECOMPOSITION OF THE HFZ DIFFERENCE BETWEEN AGES 14 AND 15",
         "=" * 86,
         "",
-        f"Baza: {db}",
-        f"Tabela: {TABLE}",
+        f"Database: {db}",
+        f"Table: {TABLE}",
         "",
         "Definicja:",
-        "Zmiana obserwowana = HFZ(15 lat, próg 15 lat) - HFZ(14 lat, próg 14 lat).",
-        "Komponent różnicy wyników = HFZ(15 lat, próg 14 lat) - HFZ(14 lat, próg 14 lat).",
-        "Komponent zmiany progu = HFZ(15 lat, próg 15 lat) - HFZ(15 lat, próg 14 lat).",
-        "Suma dwóch komponentów dokładnie daje zmianę obserwowaną.",
+        "Observed change = HFZ(age 15, age-15 threshold) - HFZ(age 14, age-14 threshold).",
+        "Score-distribution component = HFZ(age 15, age-14 threshold) - HFZ(age 14, age-14 threshold).",
+        "Threshold-change component = HFZ(age 15, age-15 threshold) - HFZ(age 15, age-14 threshold).",
+        "The two components sum exactly to the observed change.",
         "",
         out.to_string(index=False),
     ]
@@ -173,7 +173,7 @@ def main():
     con.close()
 
     print("=" * 86)
-    print("GOTOWE")
+    print("DONE")
     print(out.to_string(index=False))
     print()
     print(OUT_CSV)
@@ -184,5 +184,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print("\nBŁĄD:", e)
+        print("\nERROR:", e)
         sys.exit(1)

@@ -157,7 +157,10 @@ def main() -> None:
                 LOWER(TRIM(CAST(proba AS VARCHAR))) AS proba_norm,
                 TRIM(CAST(wynik AS VARCHAR)) AS wynik_raw,
                 LOWER(TRIM(CAST(plec AS VARCHAR))) AS plec_norm,
-                NULLIF(TRIM(CAST(kod_ter_gmina AS VARCHAR)), '') AS kod_ter_gmina,
+                CASE
+                    WHEN NULLIF(TRIM(CAST(kod_ter_gmina AS VARCHAR)), '') IS NULL THEN NULL
+                    ELSE LPAD(TRIM(CAST(kod_ter_gmina AS VARCHAR)), 7, '0')
+                END AS kod_ter_gmina,
                 NULLIF(TRIM(CAST(data_rejestracji AS VARCHAR)), '') AS data_rejestracji_raw,
                 {reg_ts} AS registration_ts,
                 TRY_CAST(NULLIF(TRIM(CAST(form_id AS VARCHAR)), '') AS BIGINT) AS form_id_num
@@ -171,7 +174,7 @@ def main() -> None:
             FROM raw_core
         ),
 
-        latest_sex AS (
+        earliest_sex AS (
             SELECT
                 student_id,
                 plec_norm AS plec
@@ -179,8 +182,8 @@ def main() -> None:
             WHERE plec_norm IN ('dz', 'ch')
             QUALIFY ROW_NUMBER() OVER (
                 PARTITION BY student_id
-                ORDER BY registration_ts DESC NULLS LAST,
-                         form_id_num DESC NULLS LAST
+                ORDER BY registration_ts ASC NULLS LAST,
+                         form_id_num ASC NULLS LAST
             ) = 1
         ),
 
@@ -263,7 +266,7 @@ def main() -> None:
             COALESCE(pq.n_distinct_gmina_values, 0)::INTEGER
                 AS n_distinct_gmina_values
         FROM students AS s
-        LEFT JOIN latest_sex AS sx USING (student_id)
+        LEFT JOIN earliest_sex AS sx USING (student_id)
         LEFT JOIN latest_gmina AS gm USING (student_id)
         LEFT JOIN latest_beep AS b USING (student_id)
         LEFT JOIN beep_counts AS bc USING (student_id)
@@ -361,7 +364,7 @@ def main() -> None:
         "Registration date/time is the primary ordering variable; form_id is the deterministic tie-breaker.",
         "",
         "DEMOGRAPHIC FIELDS:",
-        "Sex and municipality code are taken from the latest available valid record for each field.",
+        "Sex is taken from the earliest recorded valid sex code; municipality code is taken from the latest available valid record.",
         "Voivodeship is derived from the first two digits of the TERYT municipality code.",
         "",
         summary.to_string(index=False),

@@ -13,36 +13,36 @@ import statsmodels.formula.api as smf
 
 
 # =============================================================================
-# IPW + KONTROLA KOMÓRKOWA + POSITIVITY + MNAR — 20mSRT / HFZ, 2025
+# IPW + CELL CHECKS + POSITIVITY + MNAR — 20mSRT / HFZ, 2025
 #
-# Analiza wykonuje:
-# 1) model prawdopodobieństwa dostępności 20mSRT:
-#       R ~ wiek + płeć + województwo + wiek×płeć
+# The analysis performs:
+# 1) model for the probability that a 20mSRT result is observed:
+#       R ~ age + sex + voivodeship + age×sex
 # 2) stabilizowane IPW = P(R=1) / P(R=1|X)
 # 3) ograniczenie wag do 1. i 99. percentyla
-# 4) alternatywne wagi bezpośrednio w 320 komórkach:
-#       województwo × wiek × płeć
-# 5) diagnostykę positivity
-# 6) porównanie:
-#       - surowy complete-case vs IPW
+# 4) alternative weights directly in 320 cells:
+#       voivodeship × age × sex
+# 5) positivity diagnostics
+# 6) comparison:
+#       - crude complete-case vs IPW
 #       - STANDARYZOWANY HFZ complete-case vs STANDARYZOWANY HFZ po IPW
-#         przy wspólnym standardzie B
+#         using the common national age × sex standard of all eligible students
 # 7) scenariusze MNAR:
-#       brakujący uczniowie mają prawdopodobieństwo HFZ niższe o
-#       5, 10 lub 20 punktów procentowych niż obserwowani uczniowie
-#       w tej samej komórce województwo × wiek × płeć.
+#       students with missing 20mSRT are assumed to have HFZ probability lower by
+#       5, 10, or 20 percentage points than observed students
+#       in the same voivodeship × age × sex cell.
 #
-# UWAGA:
-# Przy modelu IPW opartym wyłącznie na województwie, wieku i płci waga jest
-# stała w każdej z 320 komórek. Dlatego po bezpośredniej standaryzacji
-# regionalnej do tych samych 20 komórek wieku × płci IPW nie zmienia
-# wewnątrzkomórkowego odsetka HFZ. Skrypt oblicza to jawnie i sprawdza.
-# Nie jest to błąd — to konsekwencja konstrukcji estymandu.
+# NOTE:
+# With an IPW model based only on voivodeship, age, and sex, the weight is
+# constant within each of the 320 cells. Therefore, after direct standardization
+# to the same 20 age × sex cells, IPW does not change
+# the within-cell HFZ proportion. The script calculates and verifies this explicitly.
+# This is not an error; it follows from the estimator construction.
 # =============================================================================
 
 
 # =============================================================================
-# USTAWIENIA
+# SETTINGS
 # =============================================================================
 
 ROOT = Path.cwd()
@@ -80,8 +80,8 @@ F_POSITIVITY = OUT_DIR / "05_positivity.csv"
 F_MNAR_NAT = OUT_DIR / "06_MNAR_kraj.csv"
 F_MNAR_REG = OUT_DIR / "07_MNAR_wojewodztwa.csv"
 F_MODEL = OUT_DIR / "08_model_propensity_wspolczynniki.csv"
-F_XLSX = OUT_DIR / "analiza_IPW_MNAR_2025.xlsx"
-F_CONTROL = OUT_DIR / "analiza_IPW_MNAR_2025_kontrola.txt"
+F_XLSX = OUT_DIR / "analysis_IPW_MNAR_2025.xlsx"
+F_CONTROL = OUT_DIR / "analysis_IPW_MNAR_2025_kontrola.txt"
 
 FIG_MNAR_PNG = OUT_DIR / "Figure_MNAR_scenarios_national.png"
 FIG_MNAR_SVG = OUT_DIR / "Figure_MNAR_scenarios_national.svg"
@@ -101,7 +101,7 @@ def find_latest_db() -> Path:
         candidates.extend(BAZA_DIR.glob(pattern))
     if not candidates:
         raise FileNotFoundError(
-            "Nie znaleziono finalnej bazy HFZ w folderze Baza.\n"
+            "Not found finalnej bazy HFZ w folderze Database.\n"
             "Szukano: " + ", ".join(DB_PATTERNS)
         )
     return max(candidates, key=lambda p: p.stat().st_mtime)
@@ -127,7 +127,7 @@ def get_columns(con, object_name: str) -> list[str]:
 def exact_repeated_quantile(values, counts, q: float) -> float:
     """
     Odtwarza liniowy kwantyl (jak np.quantile method='linear') dla tablicy,
-    w której każda wartość występuje 'counts' razy, bez rozwijania milionów wierszy.
+    where each value occurs 'counts' times, without expanding millions of rows.
     """
     values = np.asarray(values, dtype=float)
     counts = np.asarray(counts, dtype=np.int64)
@@ -198,15 +198,15 @@ def raw_hfz(df):
     return 100 * float(df["n_hfz"].sum()) / float(df["n_observed"].sum())
 
 
-def std_rate_and_ci(group: pd.DataFrame, rate_col: str, std_weight_col: str = "std_B"):
+def std_rate_and_ci(group: pd.DataFrame, rate_col: str, std_weight_col: str = "std_weight"):
     p = group[rate_col].to_numpy(dtype=float)
     n = group["n_observed"].to_numpy(dtype=float)
     w = group[std_weight_col].to_numpy(dtype=float)
 
     est = float(np.sum(w * p))
 
-    # Ponieważ wagi IPW są stałe wewnątrz komórki woj×wiek×płeć,
-    # efektywna liczebność wewnątrzkomórkowa pozostaje n_observed.
+    # Because IPW weights are constant within a voivodeship × age × sex cell,
+    # the effective within-cell sample size remains n_observed.
     var = float(np.sum((w ** 2) * p * (1 - p) / n))
     se = math.sqrt(max(var, 0.0))
     lo = max(0.0, est - 1.96 * se)
@@ -220,12 +220,12 @@ def spearman_ranks(a, b):
 
 
 # =============================================================================
-# ANALIZA
+# ANALYSIS
 # =============================================================================
 
 def main():
     print("=" * 104)
-    print("IPW + KONTROLA KOMÓRKOWA + POSITIVITY + MNAR — 20mSRT / HFZ, 2025")
+    print("IPW + CELL CHECKS + POSITIVITY + MNAR — 20mSRT / HFZ, 2025")
     print("=" * 104)
 
     db_path = find_latest_db()
@@ -241,7 +241,7 @@ def main():
     missing_cols = [c for c in required if c not in cols]
     if missing_cols:
         raise KeyError(
-            f"Brak wymaganych kolumn: {missing_cols}\nDostępne: {cols}"
+            f"Missing required columns: {missing_cols}\nAvailable: {cols}"
         )
 
     T = qident(TABLE_ALL)
@@ -257,7 +257,7 @@ def main():
     )
 
     # -------------------------------------------------------------------------
-    # LICZEBNOŚCI I KONTROLE
+    # COUNTS AND CHECKS
     # -------------------------------------------------------------------------
 
     n_source = int(con.execute(f"SELECT COUNT(*) FROM {T}").fetchone()[0])
@@ -290,16 +290,16 @@ def main():
 
     if n_source != n_unique:
         raise RuntimeError(
-            f"1 uczeń != 1 rekord: N={n_source:,}, unique={n_unique:,}"
+            f"one student != one row: N={n_source:,}, unique={n_unique:,}"
         )
     if n_missing_voiv > 0:
         raise RuntimeError(
-            f"{n_missing_voiv:,} kwalifikowanych uczniów nie ma województwa. "
-            "Nie można poprawnie wykonać obecnego modelu IPW."
+            f"{n_missing_voiv:,} eligible students have no voivodeship. "
+            "The current IPW model cannot be estimated correctly."
         )
 
     # -------------------------------------------------------------------------
-    # 320 KOMÓREK: województwo × wiek × płeć
+    # 320 CELLS: voivodeship × age × sex
     # -------------------------------------------------------------------------
 
     cells = con.execute(
@@ -329,27 +329,27 @@ def main():
     n_voiv = cells["wojewodztwo"].nunique()
     if len(cells) != EXPECTED_CELLS:
         raise RuntimeError(
-            f"Oczekiwano {EXPECTED_CELLS} komórek, otrzymano {len(cells)}."
+            f"Expected {EXPECTED_CELLS} cells, obtained {len(cells)}."
         )
     if n_voiv != EXPECTED_VOIV:
         raise RuntimeError(
-            f"Oczekiwano {EXPECTED_VOIV} województw, otrzymano {n_voiv}."
+            f"Expected {EXPECTED_VOIV} voivodeships, obtained {n_voiv}."
         )
     if (cells["n_observed"] <= 0).any():
-        raise RuntimeError("Naruszenie positivity: co najmniej jedna komórka ma 0 obserwowanych 20mSRT.")
+        raise RuntimeError("Positivity violation: at least one cell has zero observed 20mSRT results.")
 
     # -------------------------------------------------------------------------
-    # STANDARD B: krajowa struktura wieku × płci PRZED wyłączeniem braków
+    # STANDARD: national age × sex distribution of all eligible students before exclusion for missing 20mSRT
     # -------------------------------------------------------------------------
 
-    std_B = (
+    standard_weights = (
         cells.groupby(["wiek", "plec"], as_index=False)
-        .agg(n_standard_B=("n_eligible", "sum"))
+        .agg(n_standard=("n_eligible", "sum"))
     )
-    std_B["std_B"] = std_B["n_standard_B"] / std_B["n_standard_B"].sum()
+    standard_weights["std_weight"] = standard_weights["n_standard"] / standard_weights["n_standard"].sum()
 
     cells = cells.merge(
-        std_B[["wiek", "plec", "std_B"]],
+        standard_weights[["wiek", "plec", "std_weight"]],
         on=["wiek", "plec"],
         how="left",
         validate="m:1",
@@ -357,7 +357,7 @@ def main():
 
     # -------------------------------------------------------------------------
     # MODEL LOGISTYCZNY PROPENSITY
-    # R ~ wiek + płeć + województwo + wiek×płeć
+    # R ~ age + sex + voivodeship + age×sex
     # -------------------------------------------------------------------------
 
     model_df = cells.copy()
@@ -373,21 +373,21 @@ def main():
     cells["p_logit"] = propensity_model.predict(model_df)
 
     if (cells["p_logit"] <= 0).any():
-        raise RuntimeError("Model propensity wygenerował p <= 0.")
+        raise RuntimeError("The propensity model produced p <= 0.")
 
-    # Stabilizowana waga = marginalne P(R=1) / warunkowe P(R=1|X)
+    # Stabilized weight = marginal P(R=1) / conditional P(R=1|X)
     cells["w_logit_raw"] = p_observed / cells["p_logit"]
 
     # -------------------------------------------------------------------------
-    # ALTERNATYWNE WAGI KOMÓRKOWE
+    # ALTERNATIVE CELL WEIGHTS
     # -------------------------------------------------------------------------
 
     cells["p_cell"] = cells["response_rate"]
     cells["w_cell_raw"] = p_observed / cells["p_cell"]
 
     # -------------------------------------------------------------------------
-    # TRUNCATION / WINSORIZATION 1.–99. PERCENTYL
-    # percentyle liczone po obserwowanych osobach, nie po 320 unikalnych wagach
+    # TRUNCATION / WINSORIZATION AT THE 1ST–99TH PERCENTILES
+    # Percentiles are calculated over observed individuals, not over 320 unique weights
     # -------------------------------------------------------------------------
 
     (
@@ -403,7 +403,7 @@ def main():
     )
 
     # -------------------------------------------------------------------------
-    # DIAGNOSTYKA WAG
+    # WEIGHT DIAGNOSTICS
     # -------------------------------------------------------------------------
 
     neff_logit_raw = effective_n(cells["w_logit_raw"], cells["n_observed"])
@@ -413,7 +413,7 @@ def main():
     neff_cell_trunc = effective_n(cells[cell_trunc_col], cells["n_observed"])
 
     # -------------------------------------------------------------------------
-    # WYNIK OGÓLNY
+    # OVERALL RESULT
     # -------------------------------------------------------------------------
 
     cc_overall = raw_hfz(cells)
@@ -424,7 +424,7 @@ def main():
 
     overall = pd.DataFrame([
         {
-            "analiza": "Complete-case",
+            "analysis": "Complete-case",
             "HFZ_pct": cc_overall,
             "delta_vs_CC_pp": 0.0,
             "N_lub_Neff": n_final,
@@ -435,7 +435,7 @@ def main():
             "pct_obserwacji_ograniczonych": 0.0,
         },
         {
-            "analiza": "IPW logistyczne — surowe wagi",
+            "analysis": "Logistic IPW — raw weights",
             "HFZ_pct": logit_raw_overall,
             "delta_vs_CC_pp": logit_raw_overall - cc_overall,
             "N_lub_Neff": neff_logit_raw,
@@ -446,7 +446,7 @@ def main():
             "pct_obserwacji_ograniczonych": 0.0,
         },
         {
-            "analiza": "IPW logistyczne — 1.–99. percentyl",
+            "analysis": "Logistic IPW — 1st–99th percentile",
             "HFZ_pct": logit_tr_overall,
             "delta_vs_CC_pp": logit_tr_overall - cc_overall,
             "N_lub_Neff": neff_logit_trunc,
@@ -457,7 +457,7 @@ def main():
             "pct_obserwacji_ograniczonych": log_pct_clip,
         },
         {
-            "analiza": "IPW komórkowe — surowe wagi",
+            "analysis": "Cell IPW — raw weights",
             "HFZ_pct": cell_raw_overall,
             "delta_vs_CC_pp": cell_raw_overall - cc_overall,
             "N_lub_Neff": neff_cell_raw,
@@ -468,7 +468,7 @@ def main():
             "pct_obserwacji_ograniczonych": 0.0,
         },
         {
-            "analiza": "IPW komórkowe — 1.–99. percentyl",
+            "analysis": "Cell IPW — 1st–99th percentile",
             "HFZ_pct": cell_tr_overall,
             "delta_vs_CC_pp": cell_tr_overall - cc_overall,
             "N_lub_Neff": neff_cell_trunc,
@@ -481,7 +481,7 @@ def main():
     ])
 
     # -------------------------------------------------------------------------
-    # WIEK × PŁEĆ — CC, IPW logistyczne i IPW komórkowe
+    # AGE × SEX — CC, logistic IPW, and cell IPW
     # -------------------------------------------------------------------------
 
     age_sex_rows = []
@@ -503,19 +503,19 @@ def main():
     age_sex = pd.DataFrame(age_sex_rows)
 
     # -------------------------------------------------------------------------
-    # WOJEWÓDZTWA — SUROWE ORAZ GŁÓWNY ESTYMAND STANDARYZOWANY
+    # VOIVODESHIPS — CRUDE AND MAIN STANDARDIZED ESTIMAND
     # -------------------------------------------------------------------------
 
     regional_rows = []
 
     for voiv, g in cells.groupby("wojewodztwo", sort=True):
-        # Surowe — mogą zmieniać się po IPW
+        # Crude estimates may change after IPW
         raw_cc = raw_hfz(g)
         raw_logit = weighted_hfz(g, log_trunc_col)
         raw_cell = weighted_hfz(g, cell_trunc_col)
 
-        # W komórce woj×wiek×płeć waga jest stała, więc ważony HFZ komórkowy
-        # jest matematycznie równy complete-case HFZ komórkowemu.
+        # Within a voivodeship × age × sex cell, the weight is constant, so weighted cell HFZ
+        # is mathematically identical to complete-case cell HFZ.
         g = g.copy()
 
         g["hfz_logit_cell"] = (
@@ -542,28 +542,28 @@ def main():
             "raw_delta_logit_pp": raw_logit - raw_cc,
             "raw_IPW_cell_pct": raw_cell,
             "raw_delta_cell_pp": raw_cell - raw_cc,
-            "std_B_CC_pct": std_cc,
-            "std_B_CC_CI95_low": ci_lo,
-            "std_B_CC_CI95_high": ci_hi,
-            "std_B_IPW_logit_pct": std_logit,
+            "standardized_CC_pct": std_cc,
+            "standardized_CC_CI95_low": ci_lo,
+            "standardized_CC_CI95_high": ci_hi,
+            "standardized_IPW_logit_pct": std_logit,
             "std_delta_logit_pp": std_logit - std_cc,
-            "std_B_IPW_cell_pct": std_cell,
+            "standardized_IPW_cell_pct": std_cell,
             "std_delta_cell_pp": std_cell - std_cc,
         })
 
     regional = pd.DataFrame(regional_rows)
 
     regional["rank_std_CC"] = (
-        regional["std_B_CC_pct"].rank(ascending=False, method="min").astype(int)
+        regional["standardized_CC_pct"].rank(ascending=False, method="min").astype(int)
     )
     regional["rank_std_IPW_logit"] = (
-        regional["std_B_IPW_logit_pct"].rank(ascending=False, method="min").astype(int)
+        regional["standardized_IPW_logit_pct"].rank(ascending=False, method="min").astype(int)
     )
     regional["rank_std_IPW_cell"] = (
-        regional["std_B_IPW_cell_pct"].rank(ascending=False, method="min").astype(int)
+        regional["standardized_IPW_cell_pct"].rank(ascending=False, method="min").astype(int)
     )
 
-    regional = regional.sort_values("std_B_CC_pct", ascending=False).reset_index(drop=True)
+    regional = regional.sort_values("standardized_CC_pct", ascending=False).reset_index(drop=True)
 
     max_std_diff_logit = float(regional["std_delta_logit_pp"].abs().max())
     max_std_diff_cell = float(regional["std_delta_cell_pp"].abs().max())
@@ -573,22 +573,22 @@ def main():
     # -------------------------------------------------------------------------
 
     positivity = pd.DataFrame([
-        ["Liczba komórek", len(cells)],
-        ["Minimalne n eligible w komórce", int(cells["n_eligible"].min())],
-        ["Minimalne n observed w komórce", int(cells["n_observed"].min())],
-        ["Maksymalne n eligible w komórce", int(cells["n_eligible"].max())],
+        ["Number of cells", len(cells)],
+        ["Minimum eligible n per cell", int(cells["n_eligible"].min())],
+        ["Minimum observed n per cell", int(cells["n_observed"].min())],
+        ["Maximum eligible n per cell", int(cells["n_eligible"].max())],
         ["Minimalny rzeczywisty response rate", float(cells["response_rate"].min())],
         ["Maksymalny rzeczywisty response rate", float(cells["response_rate"].max())],
         ["Minimalne p z modelu logistycznego", float(cells["p_logit"].min())],
         ["Maksymalne p z modelu logistycznego", float(cells["p_logit"].max())],
-        ["Komórki z response rate < 0,80", int((cells["response_rate"] < 0.80).sum())],
-        ["Komórki z response rate < 0,85", int((cells["response_rate"] < 0.85).sum())],
-        ["Komórki z response rate < 0,90", int((cells["response_rate"] < 0.90).sum())],
-        ["Komórki z n observed = 0", int((cells["n_observed"] == 0).sum())],
+        ["Cells with response rate < 0.80", int((cells["response_rate"] < 0.80).sum())],
+        ["Cells with response rate < 0.85", int((cells["response_rate"] < 0.85).sum())],
+        ["Cells with response rate < 0.90", int((cells["response_rate"] < 0.90).sum())],
+        ["Cells with n observed = 0", int((cells["n_observed"] == 0).sum())],
     ], columns=["miara", "wartosc"])
 
     # -------------------------------------------------------------------------
-    # MODEL PROPENSITY — WSPÓŁCZYNNIKI
+    # PROPENSITY MODEL — COEFFICIENTS
     # -------------------------------------------------------------------------
 
     conf = propensity_model.conf_int()
@@ -604,14 +604,14 @@ def main():
     })
 
     # -------------------------------------------------------------------------
-    # MNAR — BRAKUJĄCY MAJĄ HFZ NIŻSZE O 0 / 5 / 10 / 20 p.p.
-    # NIŻ OBSERWOWANI W TEJ SAMEJ KOMÓRCE 320
+    # MNAR — MISSING STUDENTS HAVE HFZ LOWER BY 0 / 5 / 10 / 20 p.p.
+    # THAN OBSERVED STUDENTS IN THE SAME 320-CELL STRATUM
     # -------------------------------------------------------------------------
 
     mnar_nat_rows = []
     mnar_reg_rows = []
 
-    baseline_reg = regional.set_index("wojewodztwo")["std_B_CC_pct"]
+    baseline_reg = regional.set_index("wojewodztwo")["standardized_CC_pct"]
 
     for delta_pp in MNAR_DELTAS_PP:
         d = delta_pp / 100.0
@@ -624,7 +624,7 @@ def main():
             + tmp["n_missing"] * tmp["p_missing_assumed"]
         ) / tmp["n_eligible"]
 
-        # Kraj: hipotetyczny odsetek w całej populacji eligible w eksporcie.
+        # National: hypothetical proportion in the full eligible population represented in the export.
         national = 100 * (
             (
                 tmp["n_hfz"]
@@ -636,13 +636,13 @@ def main():
         reg_scenario = []
 
         for voiv, g in tmp.groupby("wojewodztwo", sort=True):
-            std_mnar = 100 * float(np.sum(g["std_B"] * g["p_full_mnar"]))
+            std_mnar = 100 * float(np.sum(g["std_weight"] * g["p_full_mnar"]))
             reg_scenario.append((voiv, std_mnar))
 
             mnar_reg_rows.append({
                 "delta_missing_vs_observed_pp": -delta_pp,
                 "wojewodztwo": voiv,
-                "std_B_HFZ_MNAR_pct": std_mnar,
+                "standardized_HFZ_MNAR_pct": std_mnar,
                 "delta_vs_CC_std_pp": std_mnar - float(baseline_reg.loc[voiv]),
             })
 
@@ -683,7 +683,7 @@ def main():
     mnar_reg = pd.DataFrame(mnar_reg_rows)
 
     # -------------------------------------------------------------------------
-    # RYCINA MNAR — KRAJ
+    # MNAR FIGURE — NATIONAL
     # -------------------------------------------------------------------------
 
     fig, ax = plt.subplots(figsize=(7.0, 4.6))
@@ -734,92 +734,94 @@ def main():
     max_resp_row = cells.loc[cells["response_rate"].idxmax()]
 
     # Regionalne ekstrema CC standaryzowanego
-    max_std_row = regional.loc[regional["std_B_CC_pct"].idxmax()]
-    min_std_row = regional.loc[regional["std_B_CC_pct"].idxmin()]
+    max_std_row = regional.loc[regional["standardized_CC_pct"].idxmax()]
+    min_std_row = regional.loc[regional["standardized_CC_pct"].idxmin()]
 
     lines = [
-        "IPW + KONTROLA KOMÓRKOWA + POSITIVITY + MNAR — 20mSRT / HFZ, 2025",
+        "IPW + CELL CHECKS + POSITIVITY + MNAR — 20mSRT / HFZ, 2025",
         "=" * 104,
         "",
-        f"Baza: {db_path}",
-        f"Tabela: {TABLE_ALL}",
-        f"Wiek: {AGE_COL} — pełne lata na 30.04.2025",
+        f"Database: {db_path}",
+        f"Table: {TABLE_ALL}",
+        f"Age: {AGE_COL} — completed years on 30 April 2025",
+        "Regional standard: national age × sex distribution of all eligible students aged 10–19",
+        "before exclusion for missing 20mSRT.",
         "",
-        "LICZEBNOŚCI",
-        f"N źródłowe: {n_source:,}",
-        f"N unikalnych student_id: {n_unique:,}",
-        f"N eligible 10–19 + prawidłowa płeć: {n_eligible:,}",
+        "COUNTS",
+        f"N source: {n_source:,}",
+        f"N unique student_id: {n_unique:,}",
+        f"N eligible ages 10–19 + valid sex code: {n_eligible:,}",
         f"N observed / complete-case: {n_final:,}",
         f"N missing 20mSRT: {n_missing:,}",
-        f"Odsetek observed: {100*p_observed:.6f}%",
-        f"N województw: {n_voiv}",
-        f"N komórek woj×wiek×płeć: {len(cells)}",
+        f"Observed proportion: {100*p_observed:.6f}%",
+        f"N voivodeships: {n_voiv}",
+        f"N voivodeship × age × sex cells: {len(cells)}",
         "",
-        "KONTROLE",
-        f"N źródłowe = {EXPECTED_SOURCE_N:,}: {'OK' if n_source == EXPECTED_SOURCE_N else 'UWAGA'}",
-        f"N eligible = {EXPECTED_ELIGIBLE_N:,}: {'OK' if n_eligible == EXPECTED_ELIGIBLE_N else 'UWAGA'}",
-        f"N final = {EXPECTED_FINAL_N:,}: {'OK' if n_final == EXPECTED_FINAL_N else 'UWAGA'}",
-        f"1 uczeń = 1 rekord: {'OK' if n_source == n_unique else 'BŁĄD'}",
-        f"320 komórek: {'OK' if len(cells) == EXPECTED_CELLS else 'BŁĄD'}",
-        f"Brak województwa w eligible: {n_missing_voiv}",
+        "CHECKS",
+        f"N source = {EXPECTED_SOURCE_N:,}: {'OK' if n_source == EXPECTED_SOURCE_N else 'CHECK'}",
+        f"N eligible = {EXPECTED_ELIGIBLE_N:,}: {'OK' if n_eligible == EXPECTED_ELIGIBLE_N else 'CHECK'}",
+        f"N final = {EXPECTED_FINAL_N:,}: {'OK' if n_final == EXPECTED_FINAL_N else 'CHECK'}",
+        f"one student = one row: {'OK' if n_source == n_unique else 'ERROR'}",
+        f"320 cells: {'OK' if len(cells) == EXPECTED_CELLS else 'ERROR'}",
+        f"Eligible students with missing voivodeship: {n_missing_voiv}",
         "",
-        "MODEL PROPENSITY",
+        "PROPENSITY MODEL",
         "R ~ C(wiek) + C(plec) + C(wojewodztwo) + C(wiek):C(plec)",
         f"Log-likelihood: {propensity_model.llf:.6f}",
         f"AIC: {propensity_model.aic:.6f}",
-        f"Minimalne p_hat: {cells['p_logit'].min():.6f}",
-        f"Maksymalne p_hat: {cells['p_logit'].max():.6f}",
+        f"Minimum p_hat: {cells['p_logit'].min():.6f}",
+        f"Maximum p_hat: {cells['p_logit'].max():.6f}",
         "",
-        "STABILIZOWANE WAGI LOGISTYCZNE",
-        f"Wzór: P(R=1) / P(R=1|wiek,płeć,województwo,wiek×płeć)",
+        "STABILIZED LOGISTIC WEIGHTS",
+        f"Formula: P(R=1) / P(R=1|age,sex,voivodeship,age×sex)",
         f"P(R=1) = {p_observed:.9f}",
-        f"Zakres przed truncation: {cells['w_logit_raw'].min():.6f}–{cells['w_logit_raw'].max():.6f}",
-        f"1. percentyl: {log_q01:.6f}",
-        f"99. percentyl: {log_q99:.6f}",
-        f"Zakres po truncation: {cells[log_trunc_col].min():.6f}–{cells[log_trunc_col].max():.6f}",
-        f"Obserwacje dotknięte truncation: {log_n_clip:,} ({log_pct_clip:.4f}%)",
-        f"Efektywne N przed truncation: {neff_logit_raw:,.2f}",
-        f"Efektywne N po truncation: {neff_logit_trunc:,.2f}",
+        f"Range before truncation: {cells['w_logit_raw'].min():.6f}–{cells['w_logit_raw'].max():.6f}",
+        f"1st percentile: {log_q01:.6f}",
+        f"99th percentile: {log_q99:.6f}",
+        f"Range after truncation: {cells[log_trunc_col].min():.6f}–{cells[log_trunc_col].max():.6f}",
+        f"Observations affected by truncation: {log_n_clip:,} ({log_pct_clip:.4f}%)",
+        f"Effective N before truncation: {neff_logit_raw:,.2f}",
+        f"Effective N after truncation: {neff_logit_trunc:,.2f}",
         "",
-        "WAGI KOMÓRKOWE 320",
-        f"Wzór: P(R=1) / P(R=1|województwo×wiek×płeć), gdzie mianownik = observed/eligible w komórce",
-        f"Zakres przed truncation: {cells['w_cell_raw'].min():.6f}–{cells['w_cell_raw'].max():.6f}",
-        f"1. percentyl: {cell_q01:.6f}",
-        f"99. percentyl: {cell_q99:.6f}",
-        f"Zakres po truncation: {cells[cell_trunc_col].min():.6f}–{cells[cell_trunc_col].max():.6f}",
-        f"Obserwacje dotknięte truncation: {cell_n_clip:,} ({cell_pct_clip:.4f}%)",
-        f"Efektywne N po truncation: {neff_cell_trunc:,.2f}",
+        "320-CELL WEIGHTS",
+        f"Formula: P(R=1) / P(R=1|voivodeship×age×sex), where the denominator is observed/eligible within the cell",
+        f"Range before truncation: {cells['w_cell_raw'].min():.6f}–{cells['w_cell_raw'].max():.6f}",
+        f"1st percentile: {cell_q01:.6f}",
+        f"99th percentile: {cell_q99:.6f}",
+        f"Range after truncation: {cells[cell_trunc_col].min():.6f}–{cells[cell_trunc_col].max():.6f}",
+        f"Observations affected by truncation: {cell_n_clip:,} ({cell_pct_clip:.4f}%)",
+        f"Effective N after truncation: {neff_cell_trunc:,.2f}",
         "",
         "POSITIVITY",
-        f"Minimalny observed/eligible w 320 komórkach: {cells['response_rate'].min():.6f}",
-        f"  komórka: {min_resp_row['wojewodztwo']} | wiek {int(min_resp_row['wiek'])} | płeć {min_resp_row['plec']} | "
+        f"Minimum observed/eligible across 320 cells: {cells['response_rate'].min():.6f}",
+        f"  cell: {min_resp_row['wojewodztwo']} | age {int(min_resp_row['wiek'])} | sex {min_resp_row['plec']} | "
         f"{int(min_resp_row['n_observed']):,}/{int(min_resp_row['n_eligible']):,}",
-        f"Maksymalny observed/eligible w 320 komórkach: {cells['response_rate'].max():.6f}",
-        f"  komórka: {max_resp_row['wojewodztwo']} | wiek {int(max_resp_row['wiek'])} | płeć {max_resp_row['plec']} | "
+        f"Maximum observed/eligible across 320 cells: {cells['response_rate'].max():.6f}",
+        f"  cell: {max_resp_row['wojewodztwo']} | age {int(max_resp_row['wiek'])} | sex {max_resp_row['plec']} | "
         f"{int(max_resp_row['n_observed']):,}/{int(max_resp_row['n_eligible']):,}",
-        f"Minimalne n_observed w komórce: {int(cells['n_observed'].min()):,}",
-        f"Komórki z n_observed = 0: {int((cells['n_observed']==0).sum())}",
+        f"Minimum n_observed per cell: {int(cells['n_observed'].min()):,}",
+        f"Cells with n_observed = 0: {int((cells['n_observed']==0).sum())}",
         "",
-        "HFZ OGÓŁEM — SUROWY ESTYMAND",
+        "HFZ OVERALL — CRUDE ESTIMAND",
         f"CC: {cc_overall:.6f}%",
-        f"IPW logistyczne, po truncation: {logit_tr_overall:.6f}% "
+        f"Logistic IPW, after truncation: {logit_tr_overall:.6f}% "
         f"(Δ {logit_tr_overall-cc_overall:+.6f} p.p.)",
-        f"IPW komórkowe, po truncation: {cell_tr_overall:.6f}% "
+        f"Cell IPW, after truncation: {cell_tr_overall:.6f}% "
         f"(Δ {cell_tr_overall-cc_overall:+.6f} p.p.)",
         "",
-        "GŁÓWNY ESTYMAND REGIONALNY — STANDARYZOWANY DO STANDARDU B",
-        f"Maks. |IPW logistyczne - CC|: {max_std_diff_logit:.12f} p.p.",
-        f"Maks. |IPW komórkowe - CC|: {max_std_diff_cell:.12f} p.p.",
-        "Jeżeli wartości są ~0, jest to oczekiwane: waga IPW jest stała wewnątrz",
-        "każdej komórki województwo×wiek×płeć i nie zmienia odsetka HFZ w tej komórce.",
-        f"CC max: {max_std_row['wojewodztwo']} {max_std_row['std_B_CC_pct']:.6f}%",
-        f"CC min: {min_std_row['wojewodztwo']} {min_std_row['std_B_CC_pct']:.6f}%",
+        "MAIN REGIONAL ESTIMAND — STANDARDIZED TO THE NATIONAL AGE × SEX DISTRIBUTION",
+        f"Max |logistic IPW - CC|: {max_std_diff_logit:.12f} p.p.",
+        f"Max |cell IPW - CC|: {max_std_diff_cell:.12f} p.p.",
+        "Values near 0 are expected because the IPW weight is constant within",
+        "each voivodeship×age×sex cell and does not change the within-cell HFZ proportion.",
+        f"CC max: {max_std_row['wojewodztwo']} {max_std_row['standardized_CC_pct']:.6f}%",
+        f"CC min: {min_std_row['wojewodztwo']} {min_std_row['standardized_CC_pct']:.6f}%",
         "",
-        "SCENARIUSZE MNAR",
-        "Założenie: brakujący mają HFZ niższe od obserwowanych w tej samej komórce 320.",
+        "MNAR SCENARIOS",
+        "Assumption: missing students have lower HFZ probability than observed students in the same 320-cell stratum.",
         mnar_nat.to_string(index=False),
         "",
-        "PLIKI",
+        "FILES",
         str(F_OVERALL),
         str(F_AGESEX),
         str(F_REGIONAL),
@@ -835,7 +837,7 @@ def main():
 
     con.close()
 
-    print("\nGOTOWE")
+    print("\nDONE")
     print(f"N eligible:        {n_eligible:,}")
     print(f"N complete-case:   {n_final:,}")
     print(f"CC overall HFZ:    {cc_overall:.4f}%")
@@ -854,5 +856,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("\nBŁĄD:", exc)
+        print("\nERROR:", exc)
         sys.exit(1)

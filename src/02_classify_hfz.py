@@ -9,14 +9,14 @@ import pandas as pd
 
 
 # =============================================================================
-# USTAWIENIA
+# SETTINGS
 # =============================================================================
 
 ROOT = Path.cwd()
 BAZA = ROOT / "data" / "derived"
 CUTOFFS_CSV = ROOT / "config" / "hfz_cutpoints.csv"
 
-# Baza utworzona wcześniej przez:
+# Database created previously by:
 #   src/01_prepare_age.py
 INPUT_GLOB = "sportowe_talenty_2025_wiek_fitnessgram*.duckdb"
 INPUT_TABLE = "uczniowie2025_wiek_fitnessgram"
@@ -39,7 +39,7 @@ FILE_CONTROL = OUT_DIR / "HFZ_2025_kontrola.txt"
 
 
 # =============================================================================
-# POMOCNICZE
+# HELPERS
 # =============================================================================
 
 def qident(name: str) -> str:
@@ -68,9 +68,9 @@ def choose_column(columns: list[str], candidates: list[str], required=True):
             return lookup[candidate.lower()]
     if required:
         raise KeyError(
-            "Nie znaleziono wymaganej kolumny. Szukano: "
+            "Required column not found. Searched for: "
             + ", ".join(candidates)
-            + "\nDostępne kolumny: "
+            + "\nAvailable columns: "
             + ", ".join(columns)
         )
     return None
@@ -78,23 +78,23 @@ def choose_column(columns: list[str], candidates: list[str], required=True):
 
 def newest_input_db() -> Path:
     candidates = list(BAZA.glob(INPUT_GLOB))
-    # Nie bierzemy baz wynikowych HFZ, gdyby nazwy kiedyś się zbliżyły.
+    # Exclude HFZ output databases in case naming patterns overlap.
     candidates = [
         p for p in candidates
         if "HFZ_po_nowym_wieku" not in p.name
     ]
     if not candidates:
         raise FileNotFoundError(
-            "Nie znaleziono bazy z nowym wiekiem.\n"
-            f"Szukano w: {BAZA}\\{INPUT_GLOB}\n"
-            "Najpierw uruchom: python .\\src\\01_prepare_age.py"
+            "Database with recalculated age not found.\n"
+            f"Searched in: {BAZA}\\{INPUT_GLOB}\n"
+            "Run first: python .\\src\\01_prepare_age.py"
         )
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
 
 def add_ci(df: pd.DataFrame, n_col="n", k_col="n_hfz") -> pd.DataFrame:
-    """95% CI dla proporcji: klasyczne przybliżenie normalne.
-    Przy N rzędu dziesiątek/setek tysięcy różnice względem Wilsona są minimalne.
+    """95% CI for a proportion: normal approximation.
+    At these large sample sizes, differences from Wilson intervals are negligible.
     """
     out = df.copy()
     p = out[k_col] / out[n_col]
@@ -111,26 +111,26 @@ def add_ci(df: pd.DataFrame, n_col="n", k_col="n_hfz") -> pd.DataFrame:
 
 def main():
     print("=" * 100)
-    print("PONOWNE WYLICZENIE HFZ PO NOWYM WIEKU — 2025")
-    print("Wiek = pełne ukończone lata na 30.04.2025")
+    print("RECALCULATION OF HFZ USING THE FINAL AGE DEFINITION — 2025")
+    print("Age = completed years on 30 April 2025")
     print("=" * 100)
 
     input_db = newest_input_db()
     output_db = versioned_path(OUTPUT_DB_BASE)
     output_parquet = versioned_path(OUTPUT_PARQUET_BASE)
 
-    print(f"Baza wejściowa: {input_db}")
-    print(f"Baza wynikowa:   {output_db}")
+    print(f"Input database: {input_db}")
+    print(f"Output database:   {output_db}")
 
-    # Najpierw sprawdzamy strukturę bazy wejściowej.
+    # First verify the structure of the input database.
     src = duckdb.connect(str(input_db), read_only=True)
 
     tables = src.execute("SHOW TABLES").df()["name"].astype(str).tolist()
     if INPUT_TABLE not in tables:
         src.close()
         raise RuntimeError(
-            f"Nie znaleziono tabeli {INPUT_TABLE}.\n"
-            "Dostępne obiekty: " + ", ".join(tables)
+            f"Table not found: {INPUT_TABLE}.\n"
+            "Available objects: " + ", ".join(tables)
         )
 
     columns = (
@@ -142,7 +142,7 @@ def main():
 
     col_student = choose_column(columns, ["student_id"])
     col_age = choose_column(columns, ["wiek_fitnessgram"])
-    col_sex = choose_column(columns, ["plec", "płeć", "sex"])
+    col_sex = choose_column(columns, ["plec", "sex", "sex"])
     col_beep = choose_column(columns, ["beep", "pacer", "20msrt"])
     col_age_status = choose_column(
         columns,
@@ -165,19 +165,19 @@ def main():
         ).fetchone()[0]
     )
 
-    # Zasada 1 uczeń = 1 rekord. Repozytorium publikacyjne nie eksportuje
-    # list student_id; ewentualna niezgodność zatrzymuje analizę.
+    # One student = one row. The publication repository does not export
+    # student_id lists; any violation stops the analysis.
     if n_source != n_students:
         src.close()
         raise RuntimeError(
-            f"Tabela wejściowa narusza zasadę 1 uczeń = 1 rekord: "
+            f"Input table violates the one-student-one-row rule: "
             f"N={n_source:,}, unikalne student_id={n_students:,}."
         )
 
     src.close()
 
     # -------------------------------------------------------------------------
-    # Tworzymy osobną bazę wynikową. Baza wejściowa pozostaje nietknięta.
+    # Create a separate output database; the input database remains unchanged.
     # -------------------------------------------------------------------------
 
     con = duckdb.connect(str(output_db))
@@ -269,7 +269,7 @@ def main():
         """
     )
 
-    # Eksport analitycznej próby 10–19.
+    # Export the analytical sample aged 10–19.
     con.execute(
         f"""
         COPY (
@@ -282,7 +282,7 @@ def main():
     )
 
     # -------------------------------------------------------------------------
-    # PRZEPŁYW / LICZEBNOŚCI
+    # FLOW / COUNTS
     # -------------------------------------------------------------------------
 
     status_counts = con.execute(
@@ -336,20 +336,20 @@ def main():
 
     flow = pd.DataFrame(
         [
-            ["Wyjściowa baza", n_source],
-            ["Brak jednoznacznie przypisanego wieku", n_no_age],
-            ["Wiek przypisany", n_age_assigned],
-            ["Poza zakresem 10–19 lat", n_out_age],
-            ["Wiek 10–19 lat", n_age_10_19],
-            ["Nieprawidłowa / nierozpoznana płeć w wieku 10–19", n_bad_sex],
-            ["Wiek 10–19 + prawidłowa płeć", n_valid_sex_10_19],
-            ["Brak wyniku 20mSRT", n_missing_beep],
-            ["Dostępny 20mSRT, ale brak progu HFZ", n_no_thr],
-            ["Końcowa próba HFZ", n_final],
-            ["Dziewczęta w próbie HFZ", n_girls],
-            ["Chłopcy w próbie HFZ", n_boys],
-            ["Osiąga HFZ", n_hfz],
-            ["Nie osiąga HFZ", n_below],
+            ["Source database", n_source],
+            ["Age unresolved", n_no_age],
+            ["Age assigned", n_age_assigned],
+            ["Outside age range 10–19", n_out_age],
+            ["Age 10–19", n_age_10_19],
+            ["Invalid / unrecognized sex code at ages 10–19", n_bad_sex],
+            ["Age 10–19 + valid sex code", n_valid_sex_10_19],
+            ["Missing 20mSRT result", n_missing_beep],
+            ["20mSRT available but HFZ cut-point missing", n_no_thr],
+            ["Final HFZ sample", n_final],
+            ["Girls in HFZ sample", n_girls],
+            ["Boys in HFZ sample", n_boys],
+            ["Achieves HFZ", n_hfz],
+            ["Does not achieve HFZ", n_below],
         ],
         columns=["etap", "n"],
     )
@@ -357,7 +357,7 @@ def main():
     flow.to_csv(FILE_FLOW, index=False, encoding="utf-8-sig")
 
     # -------------------------------------------------------------------------
-    # HFZ OGÓŁEM / PŁEĆ / WIEK / WIEK × PŁEĆ
+    # HFZ OVERALL / SEX / AGE / AGE × SEX
     # -------------------------------------------------------------------------
 
     overall = con.execute(
@@ -416,7 +416,7 @@ def main():
     by_age_sex.to_csv(FILE_AGE_SEX, index=False, encoding="utf-8-sig")
 
     # -------------------------------------------------------------------------
-    # RÓŻNICE MIĘDZY KOLEJNYMI GRUPAMI WIEKU
+    # DIFFERENCES BETWEEN ADJACENT AGE GROUPS
     # -------------------------------------------------------------------------
 
     diffs = []
@@ -449,10 +449,10 @@ def main():
     comp_1415.to_csv(FILE_1415, index=False, encoding="utf-8-sig")
 
     # -------------------------------------------------------------------------
-    # PORÓWNANIE STAREGO I NOWEGO HFZ — TYLKO AUDYT, JEŚLI STARY STATUS ISTNIEJE
+    # OLD VS NEW HFZ COMPARISON — AUDIT ONLY IF A LEGACY STATUS EXISTS
     # -------------------------------------------------------------------------
 
-    old_new_note = "Brak starej kolumny HFZ w bazie źródłowej."
+    old_new_note = "No legacy HFZ column is present in the source database."
     if col_old_hfz:
         old_new = con.execute(
             f"""
@@ -473,15 +473,15 @@ def main():
         )
         n_comp = int(old_new["n"].sum())
         old_new_note = (
-            f"Porównano stary i nowy HFZ dla {n_comp:,} rekordów; "
+            f"Compared legacy and recalculated HFZ for {n_comp:,} records; "
             f"zmiana statusu u {n_flip:,}."
         )
 
     # -------------------------------------------------------------------------
-    # KONTROLA
+    # CHECK
     # -------------------------------------------------------------------------
 
-    # Kontrola rachunkowa etapów.
+    # Arithmetic check of flow stages.
     flow_sum_ok = (
         n_no_age
         + n_out_age
@@ -495,34 +495,34 @@ def main():
     duplicate_ok = (n_source == n_students)
 
     control = [
-        "PONOWNE WYLICZENIE HFZ PO NOWYM WIEKU — 2025",
+        "RECALCULATION OF HFZ USING THE FINAL AGE DEFINITION — 2025",
         "=" * 92,
         "",
-        f"Baza wejściowa: {input_db}",
-        f"Baza wynikowa: {output_db}",
-        f"Parquet finalnej próby: {output_parquet}",
+        f"Input database: {input_db}",
+        f"Output database: {output_db}",
+        f"Final-sample Parquet: {output_parquet}",
         f"Tabela wynikowa: uczniowie2025_hfz_nowy_wiek",
         f"Widok finalny: uczniowie2025_hfz_final_10_19",
         "",
-        "REGUŁA WIEKU:",
-        "Pełne ukończone lata na 30.04.2025; używana jest kolumna wiek_fitnessgram.",
+        "AGE RULE:",
+        "Completed years on 30 April 2025; the wiek_fitnessgram column is used.",
         "",
         "PROGI FITNESSGRAM PACER:",
-        "Dziewczęta: 10=17, 11=20, 12=23, 13=25, 14=27, 15=30, 16=32, 17=35, 18–19=38.",
-        "Chłopcy:    10=17, 11=20, 12=23, 13=29, 14=36, 15=42, 16=47, 17=50, 18–19=54.",
+        "Girls: 10=17, 11=20, 12=23, 13=25, 14=27, 15=30, 16=32, 17=35, 18–19=38.",
+        "Boys:    10=17, 11=20, 12=23, 13=29, 14=36, 15=42, 16=47, 17=50, 18–19=54.",
         "",
-        "PRZEPŁYW:",
+        "FLOW:",
         flow.to_string(index=False),
         "",
-        f"N wierszy źródłowych: {n_source:,}",
-        f"N unikalnych student_id: {n_students:,}",
-        f"Kontrola 1 uczeń = 1 rekord: {'OK' if duplicate_ok else 'UWAGA — są duplikaty'}",
-        f"Kontrola sumy etapów = N źródłowe: {'OK' if flow_sum_ok else 'BŁĄD'}",
+        f"N source rows: {n_source:,}",
+        f"N unique student_id: {n_students:,}",
+        f"One-student-one-row check: {'OK' if duplicate_ok else 'CHECK — duplicates present'}",
+        f"Flow-stage sum = N source: {'OK' if flow_sum_ok else 'ERROR'}",
         "",
-        "HFZ OGÓŁEM:",
+        "HFZ OVERALL:",
         overall.to_string(index=False),
         "",
-        "HFZ WG PŁCI:",
+        "HFZ BY SEX:",
         by_sex.to_string(index=False),
         "",
         "HFZ 14 -> 15 LAT:",
@@ -531,32 +531,32 @@ def main():
         "AUDYT STARY VS NOWY HFZ:",
         old_new_note,
         "",
-        "UWAGA:",
-        "Pojedynczy niecałkowity wynik 20mSRT (117,01) pozostaje w bazie jako wartość źródłowa.",
-        "Nie wpływa to na jego klasyfikację HFZ, ponieważ wynik jest znacznie powyżej wszystkich progów.",
+        "NOTE:",
+        "A single non-integer 20mSRT result (117.01) remains in the database as a source value.",
+        "It does not affect HFZ classification because the value is well above all cut-points.",
     ]
     FILE_CONTROL.write_text("\n".join(control), encoding="utf-8")
 
     con.execute("DETACH src")
     con.close()
 
-    print("\nGOTOWE")
-    print(f"N źródłowe:       {n_source:,}")
+    print("\nDONE")
+    print(f"N source:       {n_source:,}")
     print(f"Bez wieku:         {n_no_age:,}")
-    print(f"Poza 10–19 lat:    {n_out_age:,}")
-    print(f"Wiek 10–19 lat:    {n_age_10_19:,}")
+    print(f"Outside ages 10–19:    {n_out_age:,}")
+    print(f"Age 10–19:    {n_age_10_19:,}")
     print(f"Brak 20mSRT:       {n_missing_beep:,}")
-    print(f"Końcowa próba HFZ: {n_final:,}")
-    print(f"Dziewczęta:        {n_girls:,}")
-    print(f"Chłopcy:           {n_boys:,}")
+    print(f"Final HFZ sample: {n_final:,}")
+    print(f"Girls:        {n_girls:,}")
+    print(f"Boys:           {n_boys:,}")
     print("")
     print(overall.to_string(index=False))
     print("")
     print("14 -> 15 lat:")
     print(comp_1415.to_string(index=False) if len(comp_1415) else "Brak danych.")
     print("")
-    print(f"Raporty: {OUT_DIR}")
-    print(f"Baza:    {output_db}")
+    print(f"Reports: {OUT_DIR}")
+    print(f"Database:    {output_db}")
     print(f"Parquet: {output_parquet}")
     print("=" * 100)
 
@@ -565,5 +565,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("\nBŁĄD:", exc)
+        print("\nERROR:", exc)
         sys.exit(1)

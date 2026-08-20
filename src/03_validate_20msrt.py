@@ -37,14 +37,14 @@ def find_db() -> Path:
     existing = [p for p in DB_DIR.glob(DB_PATTERN) if p.is_file()]
     if not existing:
         raise FileNotFoundError(
-            "Nie znaleziono bazy z nowym wiekiem FitnessGram.\n"
-            "Najpierw uruchom:\n"
+            "Not found bazy z nowym wiekiem FitnessGram.\n"
+            "Run first:\n"
             "python .\\src\\01_prepare_age.py"
         )
 
-    # 01_prepare_age.py nigdy nie nadpisuje wcześniejszych baz i tworzy
+    # 01_prepare_age.py never overwrites earlier databases and creates
     # kolejne wersje (_v2, _v3, ...). Do walidacji wybieramy najnowszy
-    # faktycznie utworzony plik, niezależnie od numeru wersji.
+    # a new file regardless of version suffix.
     return max(existing, key=lambda p: p.stat().st_mtime)
 
 
@@ -55,7 +55,7 @@ def choose_column(columns, candidates, required=True):
             return lookup[cand.lower()]
     if required:
         raise KeyError(
-            "Nie znaleziono wymaganej kolumny. Szukano: "
+            "Required column not found. Searched for: "
             + ", ".join(candidates)
         )
     return None
@@ -63,8 +63,8 @@ def choose_column(columns, candidates, required=True):
 
 def main():
     print("=" * 92)
-    print("WALIDACJA I OPIS SUROWEGO WYNIKU 20mSRT — 2025")
-    print("Wiek: pełne lata na 30.04.2025")
+    print("VALIDATION AND DESCRIPTION OF RAW 20mSRT RESULTS — 2025")
+    print("Age: completed years on 30 April 2025")
     print("=" * 92)
 
     db_path = find_db()
@@ -74,7 +74,7 @@ def main():
     if TABLE not in tables:
         con.close()
         raise RuntimeError(
-            f"Nie znaleziono tabeli {TABLE}. Dostępne obiekty: "
+            f"Table not found: {TABLE}. Available objects: "
             + ", ".join(tables)
         )
 
@@ -86,7 +86,7 @@ def main():
     )
 
     col_age = choose_column(cols, ["wiek_fitnessgram"])
-    col_sex = choose_column(cols, ["plec", "płeć", "sex"])
+    col_sex = choose_column(cols, ["plec", "sex", "sex"])
     col_beep = choose_column(cols, ["beep", "pacer", "20msrt"])
     col_status = choose_column(cols, ["status_wieku_fitnessgram"], required=False)
 
@@ -111,7 +111,7 @@ def main():
     )
     if n_total == 0:
         con.close()
-        raise RuntimeError("Po filtrach nie pozostały żadne obserwacje.")
+        raise RuntimeError("No observations remain after filtering.")
 
     summary = con.execute(
         f"""
@@ -245,7 +245,7 @@ def main():
     ].copy()
     comp_1415.to_csv(FILE_1415, index=False, encoding="utf-8-sig")
 
-    # Rycina 1: mediana + IQR
+    # Figure 1: median + IQR
     fig, ax = plt.subplots(figsize=(8, 5.2))
     for sex, label in [("dz", "Girls"), ("ch", "Boys")]:
         s = summary[summary["plec"] == sex].sort_values("wiek")
@@ -264,7 +264,7 @@ def main():
     fig.savefig(FIG_MEDIAN, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
-    # Rycina 2: średnia ± SD
+    # Figure 2: mean ± SD
     fig, ax = plt.subplots(figsize=(8, 5.2))
     for sex, label in [("dz", "Girls"), ("ch", "Boys")]:
         s = summary[summary["plec"] == sex].sort_values("wiek")
@@ -287,33 +287,33 @@ def main():
     con.close()
 
     lines = [
-        "WALIDACJA I OPIS SUROWEGO WYNIKU 20mSRT — 2025",
+        "VALIDATION AND DESCRIPTION OF RAW 20mSRT RESULTS — 2025",
         "=" * 80,
         "",
-        f"Baza: {db_path}",
-        f"Tabela: {TABLE}",
-        "Wiek: pełne ukończone lata na 30.04.2025.",
-        "Zakres: 10–19 lat, płeć dz/ch, dostępny wynik 20mSRT.",
-        "Do opisu surowego 20mSRT nie używano statusu HFZ.",
+        f"Database: {db_path}",
+        f"Table: {TABLE}",
+        "Age: completed years on 30 April 2025.",
+        "Scope: ages 10–19, sex dz/ch, available 20mSRT result.",
+        "HFZ status was not used to describe the raw 20mSRT distribution.",
         "",
         f"N = {n_total:,}",
         "",
-        "OGÓŁEM:",
+        "OVERALL:",
         overall.to_string(index=False),
         "",
-        "PORÓWNANIE 14 -> 15 LAT:",
+        "AGE 14 -> 15 COMPARISON:",
         comp_1415.to_string(index=False) if not comp_1415.empty else "Brak danych.",
         "",
-        "UWAGA:",
-        "Wynik 20mSRT traktowany jest jako liczba ukończonych 20-metrowych odcinków.",
-        "Wartości >150 oraz =180 są flagami audytowymi i nie są automatycznie usuwane.",
-        "Wartości >180, ujemne, równe 0 i niecałkowite są raportowane osobno.",
+        "NOTE:",
+        "The 20mSRT result is treated as the number of completed 20-m shuttles.",
+        "Values >150 and =180 are audit flags and are not automatically removed.",
+        "Values >180, negative, zero, and non-integer values are reported separately.",
     ]
     FILE_CONTROL.write_text("\n".join(lines), encoding="utf-8")
 
-    print("\nGOTOWE")
+    print("\nDONE")
     print(f"N = {n_total:,}")
-    print("\nOgółem:")
+    print("\nOverall:")
     print(overall.to_string(index=False))
     print("\n14 -> 15 lat:")
     print(comp_1415.to_string(index=False) if not comp_1415.empty else "Brak danych.")
@@ -326,5 +326,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("\nBŁĄD:", exc)
+        print("\nERROR:", exc)
         sys.exit(1)

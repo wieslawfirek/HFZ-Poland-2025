@@ -20,7 +20,7 @@ F_CONTROL = OUT_DIR / "wielokrotne_rekordy_20mSRT_2025_kontrola.txt"
 def find_raw():
     found = [p for p in RAW_CANDIDATES if p.exists()]
     if not found:
-        raise FileNotFoundError("Nie znaleziono SportoweTalenty2025.csv.\nSprawdzono:\n" + "\n".join(map(str, RAW_CANDIDATES)))
+        raise FileNotFoundError("SportoweTalenty2025.csv was not found.\nChecked:\n" + "\n".join(map(str, RAW_CANDIDATES)))
     for p in found:
         if ROOT in p.parents:
             return p
@@ -34,11 +34,11 @@ def cat(x):
 
 def main():
     print("="*90)
-    print("WIELOKROTNE REKORDY 20mSRT — SPORTOWE TALENTY 2025")
+    print("REPEATED 20mSRT RECORDS — SPORTOWE TALENTY 2025")
     print("="*90)
 
     raw_path = find_raw()
-    print("Plik źródłowy:", raw_path)
+    print("Source file:", raw_path)
 
     con = duckdb.connect()
     raw_sql = f"""read_csv('{raw_path.as_posix()}', delim=';', header=true, all_varchar=true, ignore_errors=false)"""
@@ -46,7 +46,7 @@ def main():
     cols = con.execute(f"DESCRIBE SELECT * FROM {raw_sql}").df()["column_name"].astype(str).tolist()
     for c in ["student_id","proba","wynik","data_rejestracji","form_id"]:
         if c not in cols:
-            raise RuntimeError(f"Brak kolumny {c}. Dostępne: {cols}")
+            raise RuntimeError(f"Brak kolumny {c}. Available: {cols}")
 
     con.execute(f"""
         CREATE TEMP VIEW beep_raw AS
@@ -86,73 +86,73 @@ def main():
     p_multi_valid = pct(n_multi_valid, n_valid_students)
 
     dist_all = counts.assign(liczba_rekordow=counts["n_beep_records"].map(cat)).groupby("liczba_rekordow").size().reset_index(name="n_uczniow")
-    dist_all["wariant"] = "Wszystkie rekordy Beep"
+    dist_all["wariant"] = "All Beep records"
     dist_all["procent"] = 100*dist_all["n_uczniow"]/n_students
 
     dist_valid = valid.assign(liczba_rekordow=valid["n_valid_beep_records"].map(cat)).groupby("liczba_rekordow").size().reset_index(name="n_uczniow")
-    dist_valid["wariant"] = "Tylko rekordy z liczbowym wynikiem"
+    dist_valid["wariant"] = "Only records with a numeric result"
     dist_valid["procent"] = 100*dist_valid["n_uczniow"]/n_valid_students
 
     distribution = pd.concat([dist_all, dist_valid], ignore_index=True)[["wariant","liczba_rekordow","n_uczniow","procent"]]
 
     summary = pd.DataFrame([
-        ["Wszystkie rekordy Beep", n_rows, n_students, n_multi, p_multi, max_records],
-        ["Tylko rekordy z liczbowym wynikiem", n_valid_rows, n_valid_students, n_multi_valid, p_multi_valid, int(valid["n_valid_beep_records"].max())],
+        ["All Beep records", n_rows, n_students, n_multi, p_multi, max_records],
+        ["Only records with a numeric result", n_valid_rows, n_valid_students, n_multi_valid, p_multi_valid, int(valid["n_valid_beep_records"].max())],
     ], columns=["wariant","n_rekordow","n_uczniow_z_min_1_rekordem","n_uczniow_z_>1_rekordem","pct_uczniow_z_>1_rekordem","max_rekordow_na_ucznia"])
 
     summary.to_csv(F_SUMMARY, index=False, encoding="utf-8-sig")
     distribution.to_csv(F_DISTRIBUTION, index=False, encoding="utf-8-sig")
 
     sentence = (
-        f"Więcej niż jeden rekord 20mSRT stwierdzono u {n_multi:,} z {n_students:,} "
-        f"uczniów z co najmniej jednym zapisem testu ({p_multi:.2f}%)."
+        f"More than one 20mSRT record was found for {n_multi:,} z {n_students:,} "
+        f"students with at least one test record ({p_multi:.2f}%)."
     ).replace(",", " ")
 
     if p_multi < 1:
-        interp = "Odsetek jest bardzo mały; najprawdopodobniej wystarczy podać n i % bez analizy first vs latest."
+        interp = "The proportion is very small; reporting n and % is likely sufficient without a first-vs-latest sensitivity analysis."
     elif p_multi < 5:
-        interp = "Odsetek jest niewielki; można podać n, % i rozkład liczby zapisów."
+        interp = "The proportion is small; report n, %, and the distribution of record counts."
     else:
-        interp = "Odsetek nie jest mały; warto rozważyć sensitivity analysis first vs latest."
+        interp = "The proportion is not small; consider a first-vs-latest sensitivity analysis."
 
     report = "\n".join([
-        "WIELOKROTNE REKORDY 20mSRT — SPORTOWE TALENTY 2025",
+        "REPEATED 20mSRT RECORDS — SPORTOWE TALENTY 2025",
         "="*90,
         f"Plik: {raw_path}",
         "",
-        f"Liczba rekordów Beep: {n_rows:,}",
-        f"Liczba uczniów z >=1 rekordem Beep: {n_students:,}",
-        f"Liczba uczniów z >1 rekordem Beep: {n_multi:,}",
-        f"Odsetek uczniów z >1 rekordem Beep: {p_multi:.4f}%",
-        f"Maksymalna liczba rekordów u jednego ucznia: {max_records}",
+        f"Number of Beep records: {n_rows:,}",
+        f"Students with >=1 Beep record: {n_students:,}",
+        f"Students with >1 Beep record: {n_multi:,}",
+        f"Percentage of students with >1 Beep record: {p_multi:.4f}%",
+        f"Maximum records for one student: {max_records}",
         "",
-        f"Liczba rekordów Beep z liczbowym wynikiem: {n_valid_rows:,}",
-        f"Liczba uczniów z >=1 liczbowym wynikiem: {n_valid_students:,}",
-        f"Liczba uczniów z >1 liczbowym wynikiem: {n_multi_valid:,}",
-        f"Odsetek uczniów z >1 liczbowym wynikiem: {p_multi_valid:.4f}%",
+        f"Beep records with a numeric result: {n_valid_rows:,}",
+        f"Students with >=1 numeric result: {n_valid_students:,}",
+        f"Students with >1 numeric result: {n_multi_valid:,}",
+        f"Percentage of students with >1 numeric result: {p_multi_valid:.4f}%",
         "",
-        "SUGEROWANE ZDANIE DO MANUSKRYPTU:",
+        "SUGGESTED MANUSCRIPT SENTENCE:",
         sentence,
         "",
-        "INTERPRETACJA:",
+        "INTERPRETATION:",
         interp,
         "",
-        "OCHRONA DANYCH:",
-        "Repozytorium publikacyjne nie eksportuje listy student_id uczniów z wielokrotnymi rekordami.",
-        "Raport zawiera wyłącznie zagregowane liczebności i rozkłady.",
+        "DATA PROTECTION:",
+        "The publication repository does not export student_id lists for students with repeated records.",
+        "The report contains aggregate counts and distributions only.",
     ])
     F_CONTROL.write_text(report, encoding="utf-8")
 
     con.close()
 
-    print("\nGOTOWE")
+    print("\nDONE")
     print(sentence)
     print(interp)
-    print("Raport:", F_CONTROL)
+    print("Report:", F_CONTROL)
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print("\nBŁĄD:", e)
+        print("\nERROR:", e)
         sys.exit(1)

@@ -16,48 +16,48 @@ except Exception:
 
 
 # =============================================================================
-# ANALIZA KOMPLETNOŚCI I SELEKCJI — 20mSRT / HFZ, 2025
+# COMPLETENESS AND SELECTION ANALYSIS — 20mSRT / HFZ, 2025
 #
 # Skrypt:
 # 1) ocenia pokrycie populacji docelowej przez eksport "Sportowe Talenty",
-# 2) ocenia braki 20mSRT wśród uczniów 10–19 lat z prawidłową płcią,
-# 3) zestawia braki według wieku, płci, wieku × płci i województwa,
-# 4) oblicza testy chi-kwadrat, V Craméra / phi i RR dziewczęta vs chłopcy,
-# 5) generuje finalną Ryc. S1: braki 20mSRT według wieku i płci,
+# 2) assesses missing 20mSRT results among students aged 10–19 with a valid sex code,
+# 3) summarizes missingness by age, sex, age × sex, and voivodeship,
+# 4) calculates chi-square tests, Cramér's V / phi, and the girls-vs-boys RR,
+# 5) generates final Figure S1: missing 20mSRT by age and sex,
 # 6) zapisuje komplet tabel do Excela i CSV.
 #
-# WAŻNE:
-# - wiek musi pochodzić z finalnej kolumny wiek_fitnessgram
-#   (pełne ukończone lata na 30.04.2025);
-# - do analizy braków NIE wymagamy dostępnego Beep — właśnie brak Beep jest wynikiem;
-# - nie używamy starej kolumny wieku ani daty rejestracji.
+# IMPORTANT:
+# - age must come from the final wiek_fitnessgram column
+#   (completed years on 30 April 2025);
+# - the missingness analysis does NOT require an available Beep result; missing Beep is the outcome;
+# - the legacy age column and registration date are not used.
 # =============================================================================
 
 
 # =============================================================================
-# USTAWIENIA
+# SETTINGS
 # =============================================================================
 
 ROOT = Path.cwd()
 BAZA_DIR = ROOT / "data" / "derived"
 
-# Skrypt najpierw szuka finalnej bazy HFZ, a następnie bazy z finalnym wiekiem.
+# The script first searches for the final HFZ database and then the database containing the final age variable.
 DB_PATTERNS = [
     "sportowe_talenty_2025_HFZ_po_nowym_wieku*.duckdb",
     "sportowe_talenty_2025_wiek_fitnessgram*.duckdb",
 ]
 
-# Preferowane tabele zawierające WSZYSTKICH uczniów z eksportu, także bez 20mSRT.
+# Preferred tables contain ALL students represented in the export, including those without 20mSRT.
 TABLE_CANDIDATES = [
     "uczniowie2025_hfz_nowy_wiek",
     "uczniowie2025_wiek_fitnessgram",
 ]
 
 # Oficjalny mianownik — rok szkolny 2024/2025.
-# Wartości ustalone na podstawie przekazanych zestawień administracyjnych:
-# - klasy IV–VIII szkół podstawowych:                  1 966 119
-# - objęte obowiązkiem szkoły ponadpodstawowe:        1 660 336
-# - szkoły artystyczne realizujące kształcenie ogólne:   21 003
+# Values established from the supplied administrative totals:
+# - primary school grades IV–VIII:                  1 966 119
+# - upper-secondary schools subject to mandatory testing:        1 660 336
+# - arts schools providing general education:   21 003
 PRIMARY_GRADES_IV_VIII = 1_966_119
 UPPER_SECONDARY = 1_660_336
 ART_GENERAL_EDUCATION = 21_003
@@ -83,7 +83,7 @@ FIG_S1_SVG = OUT_DIR / "Figure_S1_missing_20mSRT_by_age_and_sex.svg"
 
 
 # =============================================================================
-# FUNKCJE POMOCNICZE
+# FUNKCJE HELPERS
 # =============================================================================
 
 def qident(name: str) -> str:
@@ -97,11 +97,11 @@ def find_latest_db() -> Path:
 
     if not candidates:
         raise FileNotFoundError(
-            "Nie znaleziono finalnej bazy 2025 w folderze Baza.\n"
+            "Not found finalnej bazy 2025 w folderze Database.\n"
             "Szukano:\n  - " + "\n  - ".join(DB_PATTERNS)
         )
 
-    # Preferuj finalną bazę HFZ; w obrębie typu wybierz najnowszą.
+    # Prefer the final HFZ database; within each type choose the most recent file.
     def rank(p: Path):
         is_hfz = "HFZ_po_nowym_wieku" in p.name
         return (1 if is_hfz else 0, p.stat().st_mtime)
@@ -125,7 +125,7 @@ def choose_table(con) -> str:
         if candidate in all_objects:
             return candidate
 
-    # Próba bezpośredniego DESCRIBE, gdy obiekt jest widokiem.
+    # Attempt DESCRIBE directly when the object is a view.
     for candidate in TABLE_CANDIDATES:
         try:
             con.execute(f"DESCRIBE {qident(candidate)}").df()
@@ -134,9 +134,9 @@ def choose_table(con) -> str:
             pass
 
     raise RuntimeError(
-        "Nie znaleziono tabeli zawierającej wszystkich uczniów.\n"
+        "No table containing all students was found.\n"
         f"Szukano: {TABLE_CANDIDATES}\n"
-        f"Dostępne obiekty: {all_objects}"
+        f"Available objects: {all_objects}"
     )
 
 
@@ -148,9 +148,9 @@ def choose_column(columns: list[str], candidates: list[str], required=True):
 
     if required:
         raise KeyError(
-            "Nie znaleziono wymaganej kolumny.\n"
+            "Not found wymaganej kolumny.\n"
             f"Szukano: {candidates}\n"
-            f"Dostępne kolumny: {columns}"
+            f"Available columns: {columns}"
         )
     return None
 
@@ -178,13 +178,13 @@ def cramers_v_from_table(contingency: np.ndarray):
 def rr_and_ci(a_missing, a_total, b_missing, b_total):
     """
     RR = ryzyko braku 20mSRT u grupy A / ryzyko w grupie B.
-    W analizie A = dziewczęta, B = chłopcy.
+    In this comparison A = girls and B = boys.
     """
     p_a = a_missing / a_total
     p_b = b_missing / b_total
     rr = p_a / p_b
 
-    # SE(log RR) dla dwóch niezależnych proporcji.
+    # SE(log RR) for two independent proportions.
     se_log_rr = math.sqrt(
         (1 / a_missing) - (1 / a_total)
         + (1 / b_missing) - (1 / b_total)
@@ -201,16 +201,16 @@ def p_text(p):
 
 
 # =============================================================================
-# GŁÓWNA ANALIZA
+# MAIN ANALYSIS
 # =============================================================================
 
 def main():
     print("=" * 96)
-    print("ANALIZA KOMPLETNOŚCI I SELEKCJI — 20mSRT / HFZ, 2025")
+    print("COMPLETENESS AND SELECTION ANALYSIS — 20mSRT / HFZ, 2025")
     print("=" * 96)
 
     if TARGET_POPULATION != 3_647_458:
-        raise RuntimeError("Błąd kontrolny: populacja docelowa nie sumuje się do 3 647 458.")
+        raise RuntimeError("Control error: target population does not sum to 3,647,458.")
 
     db_path = find_latest_db()
     con = duckdb.connect(str(db_path), read_only=True)
@@ -220,12 +220,12 @@ def main():
 
     col_id = choose_column(cols, ["student_id"])
     col_age = choose_column(cols, ["wiek_fitnessgram"])
-    col_sex = choose_column(cols, ["plec", "płeć", "sex"])
+    col_sex = choose_column(cols, ["plec", "sex", "sex"])
     col_beep = choose_column(cols, ["beep", "pacer", "20msrt"])
 
     col_voiv = choose_column(
         cols,
-        ["wojewodztwo", "województwo", "woj"],
+        ["wojewodztwo", "voivodeship", "woj"],
         required=False,
     )
 
@@ -236,14 +236,14 @@ def main():
     BEEP = qident(col_beep)
 
     # ---------------------------------------------------------
-    # Kontrola 1 uczeń = 1 rekord
+    # One-student-one-row check
     # ---------------------------------------------------------
     n_source = int(con.execute(f"SELECT COUNT(*) FROM {T}").fetchone()[0])
     n_unique = int(con.execute(f"SELECT COUNT(DISTINCT {ID}) FROM {T}").fetchone()[0])
 
     if n_source != n_unique:
         raise RuntimeError(
-            f"Tabela nie spełnia zasady 1 uczeń = 1 rekord: "
+            f"Table does not satisfy the one-student-one-row rule: "
             f"N={n_source:,}, unikalne student_id={n_unique:,}."
         )
 
@@ -256,17 +256,17 @@ def main():
 
     coverage = pd.DataFrame([
         {
-            "pozycja": "Szkoła podstawowa, klasy IV–VIII",
+            "item": "Primary school, grades IV–VIII",
             "n": PRIMARY_GRADES_IV_VIII,
             "pct_populacji_docelowej": 100 * PRIMARY_GRADES_IV_VIII / TARGET_POPULATION,
         },
         {
-            "pozycja": "Szkoły ponadpodstawowe objęte obowiązkiem testowania",
+            "item": "Upper-secondary schools subject to mandatory testing",
             "n": UPPER_SECONDARY,
             "pct_populacji_docelowej": 100 * UPPER_SECONDARY / TARGET_POPULATION,
         },
         {
-            "pozycja": "Szkoły artystyczne realizujące kształcenie ogólne",
+            "item": "Arts schools providing general education",
             "n": ART_GENERAL_EDUCATION,
             "pct_populacji_docelowej": 100 * ART_GENERAL_EDUCATION / TARGET_POPULATION,
         },
@@ -289,8 +289,8 @@ def main():
     coverage["pct_populacji_docelowej"] = coverage["pct_populacji_docelowej"].round(3)
 
     # ---------------------------------------------------------
-    # Populacja do analizy braków:
-    # finalny wiek 10–19 + prawidłowa płeć, niezależnie od Beep
+    # Population for missingness analysis:
+    # final age 10–19 + valid sex code, regardless of Beep availability
     # ---------------------------------------------------------
     eligible_where = (
         f"TRY_CAST({AGE} AS INTEGER) BETWEEN 10 AND 19 "
@@ -340,7 +340,7 @@ def main():
     pct_missing = float(overall.loc[0, "pct_brak_20mSRT"])
 
     # ---------------------------------------------------------
-    # Wiek
+    # Age
     # ---------------------------------------------------------
     by_age = con.execute(
         f"""
@@ -358,7 +358,7 @@ def main():
     by_age = add_rates(by_age)
 
     # ---------------------------------------------------------
-    # Płeć
+    # Sex
     # ---------------------------------------------------------
     by_sex = con.execute(
         f"""
@@ -374,10 +374,10 @@ def main():
         """
     ).df()
     by_sex = add_rates(by_sex)
-    by_sex["plec_label"] = by_sex["plec"].map({"dz": "Dziewczęta", "ch": "Chłopcy"})
+    by_sex["plec_label"] = by_sex["plec"].map({"dz": "Girls", "ch": "Boys"})
 
     # ---------------------------------------------------------
-    # Wiek × płeć
+    # Age × sex
     # ---------------------------------------------------------
     by_age_sex = con.execute(
         f"""
@@ -399,7 +399,7 @@ def main():
     )
 
     # ---------------------------------------------------------
-    # Województwo
+    # Voivodeship
     # ---------------------------------------------------------
     if col_voiv:
         VOIV = qident(col_voiv)
@@ -424,11 +424,11 @@ def main():
         )
 
     # ---------------------------------------------------------
-    # Testy braków
+    # Missingness tests
     # ---------------------------------------------------------
     tests = []
 
-    # wiek
+    # age
     age_ct = by_age[["n_brak_20mSRT", "n_ma_20mSRT"]].to_numpy()
     chi2_age, p_age, v_age = cramers_v_from_table(age_ct)
     tests.append({
@@ -436,32 +436,32 @@ def main():
         "chi2": chi2_age,
         "df": (len(by_age) - 1) if chi2_age is not None else None,
         "p": p_age,
-        "miara_efektu": "V Craméra",
+        "effect_measure": "Cramér's V",
         "efekt": v_age,
     })
 
-    # płeć
+    # sex
     sex_ct = by_sex[["n_brak_20mSRT", "n_ma_20mSRT"]].to_numpy()
     chi2_sex, p_sex, v_sex = cramers_v_from_table(sex_ct)
     tests.append({
-        "czynnik": "płeć",
+        "czynnik": "sex",
         "chi2": chi2_sex,
         "df": 1 if chi2_sex is not None else None,
         "p": p_sex,
-        "miara_efektu": "phi",
+        "effect_measure": "phi",
         "efekt": v_sex,
     })
 
-    # województwo
+    # voivodeship
     if not by_voiv.empty:
         voiv_ct = by_voiv[["n_brak_20mSRT", "n_ma_20mSRT"]].to_numpy()
         chi2_voiv, p_voiv, v_voiv = cramers_v_from_table(voiv_ct)
         tests.append({
-            "czynnik": "województwo",
+            "czynnik": "voivodeship",
             "chi2": chi2_voiv,
             "df": (len(by_voiv) - 1) if chi2_voiv is not None else None,
             "p": p_voiv,
-            "miara_efektu": "V Craméra",
+            "effect_measure": "Cramér's V",
             "efekt": v_voiv,
         })
 
@@ -470,7 +470,7 @@ def main():
         if c in tests_df.columns:
             tests_df[c] = pd.to_numeric(tests_df[c], errors="coerce")
 
-    # RR dziewczęta vs chłopcy
+    # RR girls vs boys
     girls = by_sex.loc[by_sex["plec"] == "dz"].iloc[0]
     boys = by_sex.loc[by_sex["plec"] == "ch"].iloc[0]
 
@@ -480,7 +480,7 @@ def main():
     )
 
     rr_df = pd.DataFrame([{
-        "porownanie": "Dziewczęta vs chłopcy",
+        "comparison": "Girls vs boys",
         "RR_braku_20mSRT": rr,
         "CI95_low": rr_low,
         "CI95_high": rr_high,
@@ -492,22 +492,22 @@ def main():
     }])
 
     # ---------------------------------------------------------
-    # Przepływ
+    # Flow
     # ---------------------------------------------------------
     flow = pd.DataFrame([
-        ["Populacja docelowa objęta obowiązkiem testowania", TARGET_POPULATION],
-        ["Reprezentowani w źródłowej bazie 2025", n_source],
-        ["Niereprezentowani w źródłowej bazie", n_not_represented],
+        ["Target population subject to mandatory testing", TARGET_POPULATION],
+        ["Represented in the 2025 source database", n_source],
+        ["Not represented in the source database", n_not_represented],
         ["Brak jednoznacznego wieku", n_no_age],
-        ["Wiek poza 10–19 lat", n_out_age],
-        ["Nieprawidłowa / nierozpoznana płeć w wieku 10–19", n_invalid_sex_ageeligible],
-        ["Wiek 10–19 + prawidłowa płeć (mianownik analizy braków)", n_eligible],
-        ["Brak wyniku 20mSRT", n_missing],
-        ["Dostępny wynik 20mSRT", n_available],
+        ["Age outside 10–19 years", n_out_age],
+        ["Invalid / unrecognized sex code at ages 10–19", n_invalid_sex_ageeligible],
+        ["Age 10–19 + valid sex code (missingness denominator)", n_eligible],
+        ["Missing 20mSRT result", n_missing],
+        ["Available 20mSRT result", n_available],
     ], columns=["etap", "n"])
 
     # ---------------------------------------------------------
-    # RYCINA S1 — braki według wieku i płci
+    # FIGURE S1 — missing 20mSRT by age and sex
     # ---------------------------------------------------------
     fig, ax = plt.subplots(figsize=(7.5, 5.0))
 
@@ -574,30 +574,30 @@ def main():
     # Raport kontrolny
     # ---------------------------------------------------------
     lines = [
-        "ANALIZA KOMPLETNOŚCI I SELEKCJI — 20mSRT / HFZ, 2025",
+        "COMPLETENESS AND SELECTION ANALYSIS — 20mSRT / HFZ, 2025",
         "=" * 92,
         "",
-        f"Baza: {db_path}",
-        f"Tabela: {table}",
+        f"Database: {db_path}",
+        f"Table: {table}",
         f"Kolumna wieku: {col_age}",
-        f"Kolumna płci: {col_sex}",
+        f"Sex column: {col_sex}",
         f"Kolumna 20mSRT: {col_beep}",
-        f"Kolumna województwa: {col_voiv if col_voiv else 'BRAK'}",
+        f"Voivodeship column: {col_voiv if col_voiv else 'MISSING'}",
         "",
         "POZIOM 1 — POKRYCIE POPULACJI DOCELOWEJ",
         f"Populacja docelowa: {TARGET_POPULATION:,}",
         f"Reprezentowani w eksporcie: {n_source:,} ({coverage_pct:.3f}%)",
         f"Niereprezentowani w eksporcie: {n_not_represented:,} ({gap_pct:.3f}%)",
         "",
-        "POZIOM 2 — BRAK 20mSRT WŚRÓD UCZNIÓW 10–19 LAT Z PRAWIDŁOWĄ PŁCIĄ",
+        "LEVEL 2 — MISSING 20mSRT AMONG STUDENTS AGED 10–19 WITH A VALID SEX CODE",
         f"Mianownik: {n_eligible:,}",
         f"Brak 20mSRT: {n_missing:,} ({pct_missing:.3f}%)",
-        f"Dostępny 20mSRT: {n_available:,} ({100-pct_missing:.3f}%)",
+        f"Available 20mSRT: {n_available:,} ({100-pct_missing:.3f}%)",
         "",
-        "PŁEĆ",
+        "SEX",
         by_sex.to_string(index=False),
         "",
-        f"RR braku 20mSRT, dziewczęta vs chłopcy: "
+        f"RR of missing 20mSRT, girls vs boys: "
         f"{rr:.4f} (95% CI {rr_low:.4f}–{rr_high:.4f})",
         "",
         "TESTY",
@@ -613,12 +613,12 @@ def main():
 
     lines.extend([
         "",
-        "KONTROLE",
-        f"N źródłowe = N unikalnych student_id: {'OK' if n_source == n_unique else 'BŁĄD'}",
-        f"Populacja docelowa = 3 647 458: {'OK' if TARGET_POPULATION == 3_647_458 else 'BŁĄD'}",
-        f"Mianownik analizy braków = {n_eligible:,}",
-        f"Brak + dostępny 20mSRT = mianownik: "
-        f"{'OK' if n_missing + n_available == n_eligible else 'BŁĄD'}",
+        "CHECKS",
+        f"N source = N unique student_id: {'OK' if n_source == n_unique else 'ERROR'}",
+        f"Target population = 3,647,458: {'OK' if TARGET_POPULATION == 3_647_458 else 'ERROR'}",
+        f"Missingness denominator = {n_eligible:,}",
+        f"Missing + available 20mSRT = denominator: "
+        f"{'OK' if n_missing + n_available == n_eligible else 'ERROR'}",
         "",
         "RYCINA",
         str(FIG_S1_PNG),
@@ -629,7 +629,7 @@ def main():
 
     con.close()
 
-    print("\nGOTOWE")
+    print("\nDONE")
     print(f"Populacja docelowa: {TARGET_POPULATION:,}")
     print(f"Pokrycie eksportu:   {n_source:,} / {TARGET_POPULATION:,} = {coverage_pct:.2f}%")
     print(f"Brak 20mSRT:         {n_missing:,} / {n_eligible:,} = {pct_missing:.2f}%")
@@ -644,5 +644,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("\nBŁĄD:", exc)
+        print("\nERROR:", exc)
         sys.exit(1)

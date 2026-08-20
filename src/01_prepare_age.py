@@ -8,7 +8,7 @@ import pandas as pd
 
 
 # =============================================================================
-# USTAWIENIA
+# SETTINGS
 # =============================================================================
 
 ROOT = Path.cwd()
@@ -40,7 +40,7 @@ MIN_EXPECTED_N = 100_000
 
 
 # =============================================================================
-# POMOCNICZE
+# HELPERS
 # =============================================================================
 
 def qident(name: str) -> str:
@@ -53,7 +53,7 @@ def sql_string(value: str) -> str:
 
 def unique_output_path(stem: Path, suffix: str) -> Path:
     """
-    Nie nadpisuje wcześniejszego wyniku.
+    Does not overwrite an earlier output.
     Pierwszy plik: stem + suffix
     Kolejne: stem_v2 + suffix, stem_v3 + suffix, ...
     """
@@ -75,8 +75,8 @@ def find_raw_2025() -> Path:
     if not found:
         checked = "\n".join(f"  - {p}" for p in RAW_CANDIDATES)
         raise FileNotFoundError(
-            "Nie znaleziono surowego pliku SportoweTalenty2025.csv.\n"
-            "Sprawdzono:\n" + checked
+            "Raw file SportoweTalenty2025.csv was not found.\n"
+            "Checked:\n" + checked
         )
 
     for p in found:
@@ -99,9 +99,9 @@ def choose_column(
 
     if required:
         raise KeyError(
-            "Nie znaleziono wymaganej kolumny. Szukano: "
+            "Required column not found. Searched for: "
             + ", ".join(candidates)
-            + "\nDostępne kolumny: "
+            + "\nAvailable columns: "
             + ", ".join(columns)
         )
 
@@ -110,7 +110,7 @@ def choose_column(
 
 def completed_age_sql(birth_expr: str) -> str:
     """
-    Liczba pełnych ukończonych lat dokładnie na 30.04.2025.
+    Number of completed years exactly on 30 April 2025.
     """
     return f"""
         (
@@ -127,19 +127,19 @@ def completed_age_sql(birth_expr: str) -> str:
 
 
 # =============================================================================
-# GŁÓWNY PROGRAM
+# MAIN
 # =============================================================================
 
 def main() -> None:
     print("=" * 100)
-    print("TWORZENIE NOWEJ BAZY Z WIEKIEM FITNESSGRAM")
-    print(f"Data referencyjna: {REFERENCE_DATE}")
+    print("CREATING DATABASE WITH FITNESSGRAM AGE")
+    print(f"Reference date: {REFERENCE_DATE}")
     print("=" * 100)
 
     if not SOURCE_DB.exists():
         raise FileNotFoundError(
-            f"Nie znaleziono bazy wejściowej: {SOURCE_DB}\n"
-            "Najpierw uruchom: python .\\src\\00_build_database.py"
+            f"Input database not found: {SOURCE_DB}\n"
+            "Run first: python .\\src\\00_build_database.py"
         )
 
     raw_path = find_raw_2025()
@@ -147,13 +147,13 @@ def main() -> None:
     output_db = unique_output_path(OUTPUT_DB_STEM, ".duckdb")
     output_parquet = unique_output_path(OUTPUT_PARQUET_STEM, ".parquet")
 
-    print(f"Baza źródłowa: {SOURCE_DB}")
-    print(f"Tabela źródłowa: {SOURCE_TABLE}")
-    print(f"Surowy CSV: {raw_path}")
-    print(f"Nowa baza: {output_db}")
-    print(f"Nowy Parquet: {output_parquet}")
+    print(f"Source database: {SOURCE_DB}")
+    print(f"Source table: {SOURCE_TABLE}")
+    print(f"Raw CSV: {raw_path}")
+    print(f"New database: {output_db}")
+    print(f"New Parquet: {output_parquet}")
 
-    # Nowa baza jest osobnym plikiem — oryginalna baza nie jest modyfikowana.
+    # The new database is written to a separate file; the source database is not modified.
     con = duckdb.connect(str(output_db))
 
     con.execute(
@@ -170,8 +170,8 @@ def main() -> None:
     if SOURCE_TABLE not in tables:
         con.close()
         raise RuntimeError(
-            f"Nie znaleziono tabeli {SOURCE_TABLE} w bazie {SOURCE_DB}.\n"
-            "Dostępne tabele: " + ", ".join(tables)
+            f"Table not found: {SOURCE_TABLE} w bazie {SOURCE_DB}.\n"
+            "Available tables: " + ", ".join(tables)
         )
 
     desc = con.execute(
@@ -194,7 +194,7 @@ def main() -> None:
 
     col_sex = choose_column(
         source_columns,
-        ["plec", "płeć", "sex"],
+        ["plec", "sex", "sex"],
         required=False,
     )
 
@@ -207,12 +207,12 @@ def main() -> None:
     if source_n < MIN_EXPECTED_N:
         con.close()
         raise RuntimeError(
-            f"Tabela źródłowa ma tylko {source_n:,} rekordów. "
-            "Skrypt zatrzymał się, aby nie pracować na danych testowych."
+            f"The source table contains only {source_n:,} records. "
+            "The script stopped to avoid running on test data."
         )
 
     # -------------------------------------------------------------------------
-    # Surowy CSV
+    # Raw CSV
     # -------------------------------------------------------------------------
 
     raw_sql = f"""
@@ -240,17 +240,17 @@ def main() -> None:
         raise RuntimeError(
             "W surowym CSV brakuje kolumn: "
             + ", ".join(sorted(missing_raw))
-            + "\nDostępne kolumny: "
+            + "\nAvailable columns: "
             + ", ".join(raw_columns)
         )
 
     # -------------------------------------------------------------------------
-    # Parsowanie daty urodzenia
+    # Date-of-birth parsing
     #
-    # UWAGA:
-    # - data_rejestracji NIE jest używana do obliczania wieku;
-    # - data_ur jest traktowana jako cecha ucznia;
-    # - korzystamy ze wszystkich rekordów danego student_id.
+    # NOTE:
+    # - data_rejestracji is NOT used to calculate age;
+    # - data_ur is treated as a student-level attribute;
+    # - all records for each student_id are used.
     # -------------------------------------------------------------------------
 
     parsed_birth = """
@@ -314,7 +314,7 @@ def main() -> None:
     """
 
     # -------------------------------------------------------------------------
-    # Tworzenie nowej tabeli
+    # Create new table
     # -------------------------------------------------------------------------
 
     new_age_sql = completed_age_sql("r.birth_date_final")
@@ -331,8 +331,8 @@ def main() -> None:
     else:
         sex_sql = "NULL::VARCHAR"
 
-    # Stare zmienne HFZ są zachowane jako materiał audytowy.
-    # Nowy wiek jest jawnie nazwany i to jego należy użyć w kolejnym kroku.
+    # Legacy HFZ variables are retained only for audit purposes.
+    # The new age variable is explicitly named and must be used in the next step.
     create_table_sql = f"""
         CREATE TABLE uczniowie2025_wiek_fitnessgram AS
 
@@ -395,7 +395,7 @@ def main() -> None:
     con.execute(create_table_sql)
 
     # -------------------------------------------------------------------------
-    # Indeks pomocniczy
+    # Optional index
     # -------------------------------------------------------------------------
 
     try:
@@ -406,11 +406,11 @@ def main() -> None:
             """
         )
     except Exception:
-        # Indeks nie jest konieczny do poprawności.
+        # The index is not required for correctness.
         pass
 
     # -------------------------------------------------------------------------
-    # Widok do dalszej analizy 10–19 lat
+    # View for subsequent analysis of ages 10–19
     # -------------------------------------------------------------------------
 
     con.execute(
@@ -424,7 +424,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Eksport Parquet
+    # Parquet export
     # -------------------------------------------------------------------------
 
     con.execute(
@@ -442,7 +442,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # PODSUMOWANIE
+    # SUMMARY
     # -------------------------------------------------------------------------
 
     summary = con.execute(
@@ -536,7 +536,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Liczebności według nowego wieku i płci
+    # Counts by new age and sex
     # -------------------------------------------------------------------------
 
     age_counts = con.execute(
@@ -560,17 +560,17 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Konflikty dat urodzenia
+    # Date-of-birth conflicts
     # -------------------------------------------------------------------------
 
-    # Ze względów ochrony danych repozytorium publikacyjne nie eksportuje
-    # listy student_id z konfliktowymi datami urodzenia. Liczba takich
-    # przypadków pozostaje dostępna w tabelach podsumowujących i raporcie
-    # kontroli. Szczegółowe rekordy pozostają wyłącznie w chronionej bazie
-    # lokalnej w data/derived, która jest wyłączona z kontroli wersji.
+    # For data-protection reasons, the publication repository does not export
+    # student_id lists for conflicting dates of birth. The number of such
+    # cases remains available in summary tables and the control report.
+    # Detailed records remain only in the protected local database
+    # under data/derived, which is excluded from version control.
 
     # -------------------------------------------------------------------------
-    # Kontrola integralności
+    # Integrity check
     # -------------------------------------------------------------------------
 
     new_n = int(
@@ -582,7 +582,7 @@ def main() -> None:
     if new_n != source_n:
         con.close()
         raise RuntimeError(
-            f"BŁĄD integralności: źródło ma {source_n:,} wierszy, "
+            f"Integrity error: source has {source_n:,} rows, "
             f"a nowa tabela {new_n:,}."
         )
 
@@ -592,45 +592,45 @@ def main() -> None:
         "NOWA BAZA Z WIEKIEM FITNESSGRAM — 2025",
         "=" * 88,
         "",
-        f"Baza źródłowa: {SOURCE_DB}",
-        f"Tabela źródłowa: {SOURCE_TABLE}",
-        f"Surowy plik: {raw_path}",
-        f"Nowa baza: {output_db}",
-        f"Nowy Parquet: {output_parquet}",
+        f"Source database: {SOURCE_DB}",
+        f"Source table: {SOURCE_TABLE}",
+        f"Raw file: {raw_path}",
+        f"New database: {output_db}",
+        f"New Parquet: {output_parquet}",
         "",
-        "KRYTERIUM WIEKU:",
-        f"Wiek = liczba pełnych ukończonych lat na dzień {REFERENCE_DATE}.",
-        "Data rejestracji NIE jest używana do obliczania wieku.",
+        "AGE CRITERION:",
+        f"Age = completed years on {REFERENCE_DATE}.",
+        "Registration date is NOT used to calculate age.",
         "",
-        "REGUŁA DATY URODZENIA:",
-        "1. Dla każdego student_id analizowane są wszystkie niepuste wartości data_ur",
-        "   ze wszystkich jego rekordów w surowym pliku 2025.",
-        "2. Dokładnie jedna unikalna poprawna data_ur -> data zaakceptowana.",
-        "3. Brak poprawnej data_ur -> wiek nie jest przypisywany.",
-        "4. Więcej niż jedna poprawna data_ur -> konflikt; wiek nie jest przypisywany.",
-        "5. Nie stosuje się imputacji ani reguły większościowej.",
+        "DATE-OF-BIRTH RULE:",
+        "1. For each student_id, all non-empty data_ur values are examined",
+        "   across all records in the raw 2025 file.",
+        "2. Exactly one unique valid data_ur -> date accepted.",
+        "3. No valid data_ur -> age is not assigned.",
+        "4. More than one valid data_ur -> conflict; age is not assigned.",
+        "5. No imputation or majority rule is used.",
         "",
-        "WAŻNE:",
-        "Stare kolumny HFZ z tabeli źródłowej są zachowane tylko dla audytu.",
-        "Do następnego etapu należy używać kolumny 'wiek_fitnessgram' i na jej",
-        "podstawie ponownie przypisać progi oraz status HFZ.",
+        "IMPORTANT:",
+        "Legacy HFZ columns from the source table are retained for audit only.",
+        "The next stage must use the 'wiek_fitnessgram' column and",
+        "reassign HFZ cut-points and status from that age variable.",
         "",
-        "PODSUMOWANIE:",
+        "SUMMARY:",
         summary.to_string(index=False),
         "",
-        "STATUSY:",
+        "STATUSES:",
         status_counts.to_string(index=False),
         "",
-        "KONTROLA INTEGRALNOŚCI:",
-        f"Liczba wierszy w źródle: {source_n:,}",
+        "INTEGRITY CHECK:",
+        f"Rows in source: {source_n:,}",
         f"Liczba wierszy w nowej tabeli: {new_n:,}",
-        "Zgodność liczby wierszy: TAK",
+        "Row-count agreement: YES",
         "",
-        "OBIEKTY W NOWEJ BAZIE:",
-        "Tabela: uczniowie2025_wiek_fitnessgram",
+        "OBJECTS IN NEW DATABASE:",
+        "Table: uczniowie2025_wiek_fitnessgram",
         "Widok: uczniowie2025_wiek_fitnessgram_10_19",
         "",
-        "PLIKI RAPORTOWE:",
+        "REPORT FILES:",
         str(SUMMARY_CSV),
         str(STATUS_COUNTS_CSV),
         str(AGE_COUNTS_CSV),
@@ -643,19 +643,19 @@ def main() -> None:
 
     con.close()
 
-    print("\nGOTOWE")
+    print("\nDONE")
     print(summary.to_string(index=False))
-    print("\nNowa baza:")
+    print("\nNew database:")
     print(output_db)
-    print("\nTabela:")
+    print("\nTable:")
     print("uczniowie2025_wiek_fitnessgram")
-    print("\nWidok 10–19 lat:")
+    print("\nView for ages 10–19:")
     print("uczniowie2025_wiek_fitnessgram_10_19")
     print("\nParquet:")
     print(output_parquet)
     print("\nRaport kontroli:")
     print(CONTROL_TXT)
-    print("\nOryginalna baza NIE została zmieniona.")
+    print("\nThe original database was NOT modified.")
     print("=" * 100)
 
 
@@ -663,5 +663,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("\nBŁĄD:", exc)
+        print("\nERROR:", exc)
         sys.exit(1)
