@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+
+title: "HFZ-Poland-2025: Reproducible analysis code"
+type: software
+
+authors:
+  - family-names: "Firek"
+    given-names: "Wiesław"
+
+version: "1.0.0"
+date-released: 2026-09-30
+
+repository-code: "https://github.com/wieslawfirek/HFZ-Poland-2025"
+
+abstract: >
+  Reproducible analysis code for the study of Healthy Fitness Zone
+  attainment among Polish schoolchildren in 2025. The repository
+  contains the analytical pipeline used for data preparation, HFZ
+  classification, age- and sex-specific analyses, regional
+  standardisation, inverse-probability weighting, missing-not-at-random
+  sensitivity analyses, and generation of reported outputs.
+  Individual-level registry data are not included because they are
+  subject to access and redistribution restrictions.
